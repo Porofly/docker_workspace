@@ -1,73 +1,28 @@
-# services:
-#   app:
-#     build:
-#       context: .
-#       dockerfile: Dockerfile
-#     container_name: ${PROJECT_NAME:-myapp}-app
-#     ports:
-#       - "${APP_PORT:-8080}:8080"
-#     environment:
-#       - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-appdb}
-#     depends_on:
-#       db:
-#         condition: service_healthy
-#     volumes:
-#       - .:/app  # 개발 시 소스 마운트
-#     networks:
-#       - app-network
-#     restart: unless-stopped
-
-#   db:
-#     image: postgres:16-alpine
-#     container_name: ${PROJECT_NAME:-myapp}-db
-#     environment:
-#       POSTGRES_USER: ${DB_USER:-postgres}
-#       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-#       POSTGRES_DB: ${DB_NAME:-appdb}
-#     ports:
-#       - "${DB_PORT:-5432}:5432"
-#     volumes:
-#       - db-data:/var/lib/postgresql/data
-#     healthcheck:
-#       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
-#       interval: 5s
-#       timeout: 5s
-#       retries: 5
-#     networks:
-#       - app-network
-#     restart: unless-stopped
-
-  ## --- 선택 서비스 (필요 시 주석 해제) ---
-
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: ${PROJECT_NAME:-myapp}-redis
-  #   ports:
-  #     - "${REDIS_PORT:-6379}:6379"
-  #   volumes:
-  #     - redis-data:/data
-  #   networks:
-  #     - app-network
-  #   restart: unless-stopped
-
-  # nginx:
-  #   image: nginx:alpine
-  #   container_name: ${PROJECT_NAME:-myapp}-nginx
-  #   ports:
-  #     - "${NGINX_PORT:-80}:80"
-  #     - "${NGINX_SSL_PORT:-443}:443"
-  #   volumes:
-  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-  #   depends_on:
-  #     - app
-  #   networks:
-  #     - app-network
-  #   restart: unless-stopped
-
-# volumes:
-#   db-data:
-#   # redis-data:
-
-# networks:
-#   app-network:
-#     driver: bridge
+services:
+  px4-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${PROJECT_NAME:-px4-ros2-dev}:latest
+    container_name: ${PROJECT_NAME:-px4-ros2-dev}
+    privileged: true
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - RMW_IMPLEMENTATION=rmw_zenoh_cpp
+      - PX4_HOME=/root/PX4-Autopilot
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ./src:/root/ros2_ws/src/user_pkg
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    stdin_open: true
+    tty: true
+    command: bash
