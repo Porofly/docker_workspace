@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# 환경변수
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 빌드/로그
+*.log
+tmp/
+dist/
+build/
+
+# [커스터마이즈] 언어별 제외 항목 (필요한 것만 주석 해제)
+# node_modules/
+# __pycache__/
+# *.pyc
+# vendor/
+# target/

@@ -1,0 +1,22 @@
+# 환경변수 (시크릿 보호)
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 로그
+*.log
+
+# 빌드 산출물
+tmp/
+dist/
+build/
