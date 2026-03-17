@@ -8,17 +8,16 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     set -a; source "$PROJECT_ROOT/.env"; set +a
 fi
 
-COMPOSE_ARGS=("down")
-if [ "${1:-}" = "--volumes" ]; then
-    COMPOSE_ARGS+=("-v")
-    echo "Stopping services and removing volumes..."
+# 기본: stop (컨테이너 유지), --rm: down (컨테이너 삭제)
+if [ "${1:-}" = "--rm" ]; then
+    echo "Stopping and removing container..."
+    docker compose -f "$PROJECT_ROOT/docker-compose.yml" down
 else
-    echo "Stopping services..."
+    echo "Stopping container (data preserved)..."
+    docker compose -f "$PROJECT_ROOT/docker-compose.yml" stop
 fi
 
-docker compose -f "$PROJECT_ROOT/docker-compose.yml" "${COMPOSE_ARGS[@]}"
-
 # X11 포워딩 복원
-xhost -local:docker 2>/dev/null || true
+xhost - 2>/dev/null || true
 
 echo "Done."

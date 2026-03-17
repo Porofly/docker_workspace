@@ -33,7 +33,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     sudo \
     vim \
+    nano \
     tmux \
+    bmon \
+    tcpdump \
+    wireshark-common \
+    tshark \
     gstreamer1.0-plugins-bad \
     gstreamer1.0-plugins-base \
     gstreamer1.0-plugins-good \
@@ -72,15 +77,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp
 
 # ============================================
-# 4. Gazebo Classic 11 설치
-# ============================================
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    aptitude \
-    && aptitude install -y gazebo libgazebo11 libgazebo-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# ============================================
-# 5. PX4-Autopilot 클론 및 빌드
+# 4. PX4-Autopilot 클론
 # ============================================
 WORKDIR /root
 RUN git clone https://github.com/PX4/PX4-Autopilot.git --recursive
@@ -89,12 +86,8 @@ RUN cd /root/PX4-Autopilot \
     && bash Tools/setup/ubuntu.sh --no-nuttx \
     && rm -rf /var/lib/apt/lists/*
 
-RUN cd /root/PX4-Autopilot \
-    && source /opt/ros/humble/setup.bash \
-    && DONT_RUN=1 make px4_sitl gazebo-classic
-
 # ============================================
-# 6. Micro XRCE-DDS Agent 빌드
+# 5. Micro XRCE-DDS Agent 빌드
 # ============================================
 WORKDIR /root
 RUN git clone -b v2.4.3 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git \
@@ -108,7 +101,7 @@ RUN git clone -b v2.4.3 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git \
     && rm -rf Micro-XRCE-DDS-Agent
 
 # ============================================
-# 7. px4_msgs 빌드 (ROS2 워크스페이스)
+# 6. px4_msgs 빌드 (ROS2 워크스페이스)
 # ============================================
 RUN mkdir -p /root/ros2_ws/src \
     && cd /root/ros2_ws/src \
@@ -118,21 +111,22 @@ RUN mkdir -p /root/ros2_ws/src \
     && colcon build
 
 # ============================================
-# 8. YOLOv8 설치 (CUDA 11.8 기반)
+# 7. YOLOv8 설치 (CUDA 11.8 기반)
 # ============================================
 RUN pip3 install --no-cache-dir \
     torch torchvision --index-url https://download.pytorch.org/whl/cu118 \
     && pip3 install --no-cache-dir ultralytics
 
 # ============================================
-# 9. 환경 설정
+# 8. 환경 설정
 # ============================================
 RUN echo "# ROS2 Humble" >> /root/.bashrc \
     && echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
-    && echo "source /root/ros2_ws/install/setup.bash" >> /root/.bashrc \
     && echo "" >> /root/.bashrc \
     && echo "# RMW Zenoh" >> /root/.bashrc \
-    && echo "export RMW_IMPLEMENTATION=rmw_zenoh_cpp" >> /root/.bashrc \
+    && echo "# export RMW_IMPLEMENTATION=rmw_zenoh_cpp" >> /root/.bashrc \
+    && echo "# RMW FastDDS" >> /root/.bashrc \
+    && echo "# export RMW_IMPLEMENTATION=rmw_fastrtps_cpp" >> /root/.bashrc \
     && echo "" >> /root/.bashrc \
     && echo "# PX4" >> /root/.bashrc \
     && echo "export PX4_HOME=/root/PX4-Autopilot" >> /root/.bashrc
