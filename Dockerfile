@@ -6,7 +6,7 @@
 
 FROM ubuntu:22.04
 
-LABEL maintainer="uwb-recon"
+LABEL maintainer="kyg"
 LABEL description="UWB Recon system with ROS2 Humble, PX4 SITL, uXRCE-DDS Agent"
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -26,12 +26,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         lsb-release \
         software-properties-common \
         ca-certificates \
+        sudo \
+        vim \
+        nano \
+        bmon \
+        tcpdump \
+        wireshark-common \
+        tshark \
     && locale-gen en_US en_US.UTF-8 \
     && update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
+
+# NVIDIA GPU 컨테이너 설정 (Gazebo GUI 렌더링용)
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute
 
 # ============================================
 # 2. ROS2 Humble 설치 (최신 공식 방법: ros2-apt-source .deb)
@@ -69,12 +80,8 @@ RUN cd /tmp \
 # ============================================
 # 4. PX4-Autopilot (main, SITL only)
 # ============================================
-RUN git clone https://github.com/PX4/PX4-Autopilot.git --recursive /root/PX4-Autopilot
-
-RUN bash /root/PX4-Autopilot/Tools/setup/ubuntu.sh --no-nuttx \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN pip3 install --no-cache-dir empy==3.3.4 pyros-genmsg setuptools
+WORKDIR /root
+RUN git clone https://github.com/PX4/PX4-Autopilot.git --recursive
 
 # ============================================
 # 5. px4_msgs 워크스페이스
@@ -86,8 +93,6 @@ RUN mkdir -p /root/ros2_ws/src \
 RUN /bin/bash -c "source /opt/ros/humble/setup.bash \
     && cd /root/ros2_ws \
     && colcon build"
-
-RUN echo "source /root/ros2_ws/install/local_setup.bash" >> /root/.bashrc
 
 # ============================================
 # 6. Entrypoint

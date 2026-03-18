@@ -10,6 +10,9 @@ fi
 
 IMAGE_NAME="${PROJECT_NAME:-uwb-recon}"
 
+# X11 디스플레이 접근 허용 (GUI 앱용)
+xhost + 2>/dev/null || true
+
 if [ "${1:-}" = "--standalone" ]; then
     # 단일 컨테이너 모드
     echo "Starting ${IMAGE_NAME} (standalone)..."
