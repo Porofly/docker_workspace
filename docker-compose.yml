@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: uwb-recon-dev:latest
     container_name: uwb-recon
     network_mode: host
     privileged: true
