@@ -104,11 +104,13 @@ RUN pip3 install --no-cache-dir \
 # ============================================
 # 7. 환경 설정
 # ============================================
-RUN echo "# ROS2 Humble" >> /root/.bashrc \
+RUN echo "" >> /root/.bashrc \
+    && echo "# ROS2 Humble" >> /root/.bashrc \
     && echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
     && echo "" >> /root/.bashrc \
     && echo "# RMW Zenoh" >> /root/.bashrc \
     && echo "# export RMW_IMPLEMENTATION=rmw_zenoh_cpp" >> /root/.bashrc \
+    && echo "" >> /root/.bashrc \
     && echo "# RMW FastDDS" >> /root/.bashrc \
     && echo "# export RMW_IMPLEMENTATION=rmw_fastrtps_cpp" >> /root/.bashrc \
     && echo "" >> /root/.bashrc
