@@ -53,8 +53,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 2. ROS2 Humble 설치
 # ============================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    software-properties-common \
     && add-apt-repository universe \
     && export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F\" '{print $4}') \
     && curl -L -o /tmp/ros2-apt-source.deb \
@@ -115,6 +113,6 @@ RUN echo "" >> /root/.bashrc \
     && echo "# export RMW_IMPLEMENTATION=rmw_fastrtps_cpp" >> /root/.bashrc \
     && echo "" >> /root/.bashrc
 
-WORKDIR /root/ros2_ws
+WORKDIR /root
 
 CMD ["bash"]

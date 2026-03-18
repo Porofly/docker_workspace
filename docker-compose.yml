@@ -12,12 +12,9 @@ services:
       - XAUTHORITY=/root/.Xauthority
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
-      - RMW_IMPLEMENTATION=rmw_zenoh_cpp
-      - PX4_HOME=/root/PX4-Autopilot
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${XAUTHORITY:-$HOME/.Xauthority}:/root/.Xauthority:ro
-      - ./src:/root/ros2_ws/src/user_pkg
     deploy:
       resources:
         reservations:
