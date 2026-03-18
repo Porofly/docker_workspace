@@ -74,17 +74,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-rmw-zenoh-cpp \
     && rm -rf /var/lib/apt/lists/*
 
-ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp
-
 # ============================================
 # 4. PX4-Autopilot 클론
 # ============================================
 WORKDIR /root
 RUN git clone https://github.com/PX4/PX4-Autopilot.git --recursive
-
-RUN cd /root/PX4-Autopilot \
-    && bash Tools/setup/ubuntu.sh --no-nuttx \
-    && rm -rf /var/lib/apt/lists/*
 
 # ============================================
 # 5. Micro XRCE-DDS Agent 빌드
@@ -101,24 +95,14 @@ RUN git clone -b v2.4.3 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git \
     && rm -rf Micro-XRCE-DDS-Agent
 
 # ============================================
-# 6. px4_msgs 빌드 (ROS2 워크스페이스)
-# ============================================
-RUN mkdir -p /root/ros2_ws/src \
-    && cd /root/ros2_ws/src \
-    && git clone https://github.com/PX4/px4_msgs.git \
-    && cd /root/ros2_ws \
-    && source /opt/ros/humble/setup.bash \
-    && colcon build
-
-# ============================================
-# 7. YOLOv8 설치 (CUDA 11.8 기반)
+# 6. YOLOv8 설치 (CUDA 11.8 기반)
 # ============================================
 RUN pip3 install --no-cache-dir \
     torch torchvision --index-url https://download.pytorch.org/whl/cu118 \
     && pip3 install --no-cache-dir ultralytics
 
 # ============================================
-# 8. 환경 설정
+# 7. 환경 설정
 # ============================================
 RUN echo "# ROS2 Humble" >> /root/.bashrc \
     && echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
@@ -127,9 +111,7 @@ RUN echo "# ROS2 Humble" >> /root/.bashrc \
     && echo "# export RMW_IMPLEMENTATION=rmw_zenoh_cpp" >> /root/.bashrc \
     && echo "# RMW FastDDS" >> /root/.bashrc \
     && echo "# export RMW_IMPLEMENTATION=rmw_fastrtps_cpp" >> /root/.bashrc \
-    && echo "" >> /root/.bashrc \
-    && echo "# PX4" >> /root/.bashrc \
-    && echo "export PX4_HOME=/root/PX4-Autopilot" >> /root/.bashrc
+    && echo "" >> /root/.bashrc
 
 WORKDIR /root/ros2_ws
 

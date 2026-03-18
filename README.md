@@ -1,78 +1,87 @@
-# Docker Workspace Template
+# Suicide Drone — PX4 + ROS2 + Gazebo + YOLOv8
 
-Docker 환경 구축을 위한 미니멀 템플릿. main 브랜치를 기본 템플릿으로 유지하고, 프로젝트별 브랜치를 생성하여 사용합니다.
+PX4 자율비행 드론 개발을 위한 Docker 환경. ROS2 Humble, Gazebo Classic, YOLOv8(CUDA 11.8)을 포함합니다.
+
+## 포함 스택
+
+| 구성 요소 | 버전 |
+|-----------|------|
+| Ubuntu | 22.04 |
+| ROS2 | Humble (Desktop) |
+| RMW | Zenoh (`rmw_zenoh_cpp`) |
+| PX4-Autopilot | latest (recursive clone) |
+| Micro XRCE-DDS Agent | v2.4.3 |
+| YOLOv8 | ultralytics (PyTorch CUDA 11.8) |
+| GStreamer | 1.0 (영상 스트리밍) |
+
+## 요구 사항
+
+- Docker + Docker Compose
+- NVIDIA GPU + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+- X11 디스플레이 서버 (Gazebo GUI 사용 시)
 
 ## Quick Start
 
 ```bash
-# 1. 리포지토리 클론
-git clone https://github.com/Porofly/docker_workspace.git
-cd docker_workspace
-
-# 2. 프로젝트 브랜치 생성
-git checkout -b project/my-project
-
-# 3. 환경변수 설정
+# 1. 환경변수 설정
 cp .env.example .env
-# .env 파일을 프로젝트에 맞게 수정
 
-# 4. 빌드
+# 2. 이미지 빌드
 bash scripts/build.sh
 
-# 5. 실행
+# 3. 컨테이너 실행
 bash scripts/run.sh
-```
 
-## 브랜칭 워크플로우
-
+# 4. 컨테이너 접속
+docker exec -it px4-ros2-dev bash
 ```
-main (템플릿)
-├── project/web-api        # 웹 API 프로젝트
-├── project/data-pipeline  # 데이터 파이프라인
-└── project/ml-service     # ML 서비스
-```
-
-- **main**: 템플릿 원본. 직접 수정하지 않음
-- **project/xxx**: main에서 분기하여 프로젝트별 커스터마이즈
-- 프로젝트 브랜치는 main에 머지하지 않음
-- 템플릿 업데이트 반영: `git merge main` (프로젝트 브랜치에서)
 
 ## 파일 구조
 
 | 파일 | 설명 |
 |------|------|
-| `Dockerfile` | 싱글스테이지 빌드 템플릿 (`[커스터마이즈]` 주석 참고) |
-| `docker-compose.yml` | app + PostgreSQL 구성, 선택 서비스(Redis, Nginx) 포함 |
-| `.env.example` | 환경변수 템플릿 (`.env`로 복사하여 사용) |
-| `.dockerignore` | Docker 빌드 제외 파일 |
-| `.gitignore` | Git 추적 제외 파일 |
+| `Dockerfile` | PX4 + ROS2 Humble + Gazebo + YOLOv8 통합 이미지 |
+| `docker-compose.yml` | GPU 패스스루, X11 포워딩, 볼륨 마운트 설정 |
+| `.env.example` | 환경변수 템플릿 (`PROJECT_NAME`, `DISPLAY`) |
 | `scripts/build.sh` | 이미지 빌드 (`bash scripts/build.sh [태그]`) |
-| `scripts/run.sh` | 서비스 시작 (`--standalone`: 단일 컨테이너 모드) |
-| `scripts/stop.sh` | 서비스 중지 (`--volumes`: 볼륨 삭제) |
+| `scripts/run.sh` | 컨테이너 생성/시작 (X11 포워딩 자동 설정) |
+| `scripts/stop.sh` | 컨테이너 중지 (`--rm`: 컨테이너 삭제) |
+| `src/` | ROS2 사용자 패키지 (컨테이너 내 `/root/ros2_ws/src/user_pkg`에 마운트) |
 
-## 사용 모드
+## 컨테이너 설정
 
-### Docker Compose (기본)
-여러 서비스가 필요한 경우 (app + DB 등):
+- **네트워크**: `host` 모드 (DDS 통신을 위해)
+- **GPU**: 전체 NVIDIA GPU 패스스루
+- **볼륨**: `./src` → `/root/ros2_ws/src/user_pkg` (호스트에서 편집, 컨테이너에서 빌드)
+- **RMW**: `rmw_zenoh_cpp` (기본값, `.bashrc`에서 `rmw_fastrtps_cpp`로 변경 가능)
+
+## 스크립트 사용법
+
 ```bash
-bash scripts/run.sh       # 시작
-bash scripts/stop.sh      # 중지
+# 빌드 (태그 지정 가능)
+bash scripts/build.sh          # px4-ros2-dev:latest
+bash scripts/build.sh v1.0     # px4-ros2-dev:v1.0
+
+# 실행 (기존 컨테이너가 있으면 재시작, 없으면 새로 생성)
+bash scripts/run.sh
+
+# 중지 (컨테이너 유지)
+bash scripts/stop.sh
+
+# 중지 + 컨테이너 삭제
+bash scripts/stop.sh --rm
 ```
 
-### Standalone
-단일 컨테이너만 필요한 경우:
+## 컨테이너 내부 작업
+
 ```bash
-bash scripts/build.sh
-bash scripts/run.sh --standalone
-bash scripts/stop.sh --standalone
+# PX4 SITL 시뮬레이션 시작
+cd /root/PX4-Autopilot
+make px4_sitl gazebo-classic
+
+# Micro XRCE-DDS Agent 실행
+MicroXRCEAgent udp4 -p 8888
+
+# ROS2 토픽 확인
+ros2 topic list
 ```
-
-## 커스터마이즈 체크리스트
-
-새 프로젝트 브랜치에서 아래 항목을 수정하세요:
-
-- [ ] `Dockerfile`: 베이스 이미지, 패키지, 빌드 단계, 실행 명령
-- [ ] `docker-compose.yml`: 서비스 구성, 포트, 볼륨
-- [ ] `.env.example`: 프로젝트에 맞는 환경변수
-- [ ] `.dockerignore`: 언어별 제외 항목 주석 해제
-- [ ] `README.md`: 프로젝트 설명으로 교체
