@@ -1,29 +1,30 @@
 #!/usr/bin/env bash
-# set -euo pipefail
+set -euo pipefail
 
-# PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# # .env 로드
-# if [ -f "$PROJECT_ROOT/.env" ]; then
-#     set -a; source "$PROJECT_ROOT/.env"; set +a
-# fi
+# .env 로드
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    set -a; source "$PROJECT_ROOT/.env"; set +a
+fi
 
-# IMAGE_NAME="${PROJECT_NAME:-myapp}"
+CONTAINER_NAME="${PROJECT_NAME:-px4ros2-jazzy}"
 
-# if [ "${1:-}" = "--standalone" ]; then
-#     # 단일 컨테이너 중지
-#     echo "Stopping ${IMAGE_NAME}-app..."
-#     docker stop "${IMAGE_NAME}-app" && docker rm "${IMAGE_NAME}-app"
-# else
-#     # Docker Compose 중지
-#     COMPOSE_ARGS=("down")
-#     if [ "${1:-}" = "--volumes" ]; then
-#         COMPOSE_ARGS+=("-v")
-#         echo "Stopping services and removing volumes..."
-#     else
-#         echo "Stopping services..."
-#     fi
-#     docker compose -f "$PROJECT_ROOT/docker-compose.yml" "${COMPOSE_ARGS[@]}"
-# fi
+if [ "${1:-}" = "--standalone" ]; then
+    echo "Stopping ${CONTAINER_NAME}..."
+    docker stop "${CONTAINER_NAME}"
+elif [ "${1:-}" = "--rm" ]; then
+    echo "Removing container..."
+    docker compose -f "$PROJECT_ROOT/docker-compose.yml" down
+elif [ "${1:-}" = "--rm-volumes" ]; then
+    echo "Removing container and volumes..."
+    docker compose -f "$PROJECT_ROOT/docker-compose.yml" down -v
+else
+    echo "Stopping container (preserved)..."
+    docker compose -f "$PROJECT_ROOT/docker-compose.yml" stop
+fi
 
-# echo "Done."
+# X11 권한 복원
+xhost -local:docker 2>/dev/null || true
+
+echo "Done."

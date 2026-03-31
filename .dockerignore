@@ -27,9 +27,6 @@ tmp/
 dist/
 build/
 
-# [커스터마이즈] 언어별 제외 항목 (필요한 것만 주석 해제)
-# node_modules/
-# __pycache__/
-# *.pyc
-# vendor/
-# target/
+# Python
+__pycache__/
+*.pyc
