@@ -9,7 +9,7 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
 fi
 
 # X11 forwarding 허용
-xhost +local:docker 2>/dev/null || echo "Warning: xhost not available, GUI may not work"
+xhost +
 
 CONTAINER_NAME="${PROJECT_NAME:-px4ros2-jazzy}"
 
