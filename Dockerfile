@@ -81,6 +81,8 @@ RUN cd /tmp \
 # ============================================
 WORKDIR /root
 RUN git clone https://github.com/PX4/PX4-Autopilot.git --recursive
+RUN cd PX4-Autopilot \
+    && ./Tools/setup/ubuntu.sh --no-nuttx
 
 # ============================================
 # 5. 환경 설정
