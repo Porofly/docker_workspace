@@ -64,7 +64,15 @@ RUN apt-get update && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# 3. Micro XRCE-DDS Agent 빌드
+# 3. rmw_zenoh + ros_gz 브릿지 설치
+# ============================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ros-jazzy-rmw-zenoh-cpp \
+        ros-jazzy-ros-gz \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================
+# 4. Micro XRCE-DDS Agent 빌드
 # ============================================
 RUN cd /tmp \
     && git clone -b v2.4.3 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git \
@@ -77,7 +85,7 @@ RUN cd /tmp \
     && cd /tmp && rm -rf Micro-XRCE-DDS-Agent
 
 # ============================================
-# 4. PX4-Autopilot
+# 5. PX4-Autopilot
 # ============================================
 WORKDIR /root
 RUN git clone https://github.com/PX4/PX4-Autopilot.git --recursive
@@ -85,18 +93,32 @@ RUN cd PX4-Autopilot \
     && ./Tools/setup/ubuntu.sh --no-nuttx
 
 # ============================================
-# 5. 환경 설정
+# 6. px4_msgs 워크스페이스
+# ============================================
+RUN mkdir -p /root/ros2_ws/src \
+    && cd /root/ros2_ws/src \
+    && git clone https://github.com/PX4/px4_msgs.git
+
+RUN /bin/bash -c "source /opt/ros/jazzy/setup.bash \
+    && cd /root/ros2_ws \
+    && colcon build"
+
+# ============================================
+# 7. 환경 설정
 # ============================================
 RUN echo "" >> /root/.bashrc \
     && echo "# ROS2 Jazzy" >> /root/.bashrc \
     && echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc \
+    && echo "" >> /root/.bashrc \
+    && echo "# px4_msgs workspace" >> /root/.bashrc \
+    && echo "if [ -f /root/ros2_ws/install/local_setup.bash ]; then source /root/ros2_ws/install/local_setup.bash; fi" >> /root/.bashrc \
     && echo "" >> /root/.bashrc \
     && echo "# RMW (default: FastDDS, uncomment for Zenoh)" >> /root/.bashrc \
     && echo "# export RMW_IMPLEMENTATION=rmw_zenoh_cpp" >> /root/.bashrc \
     && echo "" >> /root/.bashrc
 
 # ============================================
-# 6. Entrypoint
+# 8. Entrypoint
 # ============================================
 COPY ros_entrypoint.sh /ros_entrypoint.sh
 RUN chmod +x /ros_entrypoint.sh
