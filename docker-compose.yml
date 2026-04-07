@@ -1,19 +1,34 @@
+x-px4-common: &px4-common
+  image: ${PROJECT_NAME:-px4ros2-jazzy}:latest
+  privileged: true
+  network_mode: host
+  ipc: host
+  pid: host
+  volumes: &px4-volumes
+    - /tmp:/tmp
+  environment: &px4-env
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+    PX4_GZ_STANDALONE: "1"
+    PX4_GZ_WORLD: default
+  stdin_open: true
+  tty: true
+  restart: unless-stopped
+
 services:
-  px4-dev:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ${PROJECT_NAME:-px4ros2-jazzy}:latest
-    container_name: ${PROJECT_NAME:-px4ros2-jazzy}
-    privileged: true
-    network_mode: host
+  # ============================================
+  # GCS — Gazebo 서버 + 모니터링
+  # ============================================
+  gcs:
+    <<: *px4-common
+    container_name: gcs
     environment:
-      - DISPLAY=${DISPLAY}
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute
-      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      <<: *px4-env
+      DISPLAY: ${DISPLAY}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: graphics,utility,compute
+      GZ_SIM_RESOURCE_PATH: /root/PX4-Autopilot/Tools/simulation/gz/models:/root/PX4-Autopilot/Tools/simulation/gz/worlds
     volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /tmp:/tmp
       - /dev:/dev
     deploy:
       resources:
@@ -22,7 +37,79 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    stdin_open: true
-    tty: true
-    restart: unless-stopped
-    command: bash
+    command: bash -c "gz sim -v4 -r default.sdf"
+
+  # ============================================
+  # PX4 SITL 인스턴스 1
+  # ============================================
+  px4-1:
+    <<: *px4-common
+    container_name: px4-1
+    depends_on:
+      - gcs
+    environment:
+      <<: *px4-env
+      PX4_SYS_AUTOSTART: "4001"
+      PX4_SIM_MODEL: gz_x500
+      PX4_GZ_MODEL_POSE: "0,0"
+    command: bash -c "while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 0"
+
+  # ============================================
+  # PX4 SITL 인스턴스 2
+  # ============================================
+  px4-2:
+    <<: *px4-common
+    container_name: px4-2
+    depends_on:
+      - gcs
+    environment:
+      <<: *px4-env
+      PX4_SYS_AUTOSTART: "4001"
+      PX4_SIM_MODEL: gz_x500
+      PX4_GZ_MODEL_POSE: "2,0"
+    command: bash -c "while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 1"
+
+  # ============================================
+  # PX4 SITL 인스턴스 3
+  # ============================================
+  px4-3:
+    <<: *px4-common
+    container_name: px4-3
+    depends_on:
+      - gcs
+    environment:
+      <<: *px4-env
+      PX4_SYS_AUTOSTART: "4001"
+      PX4_SIM_MODEL: gz_x500
+      PX4_GZ_MODEL_POSE: "4,0"
+    command: bash -c "while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 2"
+
+  # ============================================
+  # PX4 SITL 인스턴스 4
+  # ============================================
+  px4-4:
+    <<: *px4-common
+    container_name: px4-4
+    depends_on:
+      - gcs
+    environment:
+      <<: *px4-env
+      PX4_SYS_AUTOSTART: "4001"
+      PX4_SIM_MODEL: gz_x500
+      PX4_GZ_MODEL_POSE: "6,0"
+    command: bash -c "while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 3"
+
+  # ============================================
+  # PX4 SITL 인스턴스 5
+  # ============================================
+  px4-5:
+    <<: *px4-common
+    container_name: px4-5
+    depends_on:
+      - gcs
+    environment:
+      <<: *px4-env
+      PX4_SYS_AUTOSTART: "4001"
+      PX4_SIM_MODEL: gz_x500
+      PX4_GZ_MODEL_POSE: "8,0"
+    command: bash -c "while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 4"

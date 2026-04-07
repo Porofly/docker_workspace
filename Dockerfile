@@ -90,7 +90,9 @@ RUN cd /tmp \
 WORKDIR /root
 RUN git clone https://github.com/PX4/PX4-Autopilot.git --recursive
 RUN cd PX4-Autopilot \
-    && ./Tools/setup/ubuntu.sh --no-nuttx
+    && ./Tools/setup/ubuntu.sh --no-nuttx \
+    && make px4_sitl_default \
+    && make px4_sitl_zenoh
 
 # ============================================
 # 6. px4_msgs 워크스페이스
@@ -113,7 +115,8 @@ RUN echo "" >> /root/.bashrc \
     && echo "# px4_msgs workspace" >> /root/.bashrc \
     && echo "if [ -f /root/ros2_ws/install/local_setup.bash ]; then source /root/ros2_ws/install/local_setup.bash; fi" >> /root/.bashrc \
     && echo "" >> /root/.bashrc \
-    && echo "# RMW (default: FastDDS, uncomment for Zenoh)" >> /root/.bashrc \
+    && echo "# RMW" >> /root/.bashrc \
+    && echo "export RMW_IMPLEMENTATION=rmw_fastrtps_cpp" >> /root/.bashrc \
     && echo "# export RMW_IMPLEMENTATION=rmw_zenoh_cpp" >> /root/.bashrc \
     && echo "" >> /root/.bashrc
 
