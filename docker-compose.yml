@@ -52,7 +52,7 @@ services:
       PX4_SYS_AUTOSTART: "4001"
       PX4_SIM_MODEL: gz_x500
       PX4_GZ_MODEL_POSE: "0,0"
-    command: bash -c "while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 0"
+    command: bash -c "MicroXRCEAgent udp4 -p 8889 & while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 1"
 
   # ============================================
   # PX4 SITL 인스턴스 2
@@ -67,7 +67,7 @@ services:
       PX4_SYS_AUTOSTART: "4001"
       PX4_SIM_MODEL: gz_x500
       PX4_GZ_MODEL_POSE: "2,0"
-    command: bash -c "while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 1"
+    command: bash -c "MicroXRCEAgent udp4 -p 8890 & while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 2"
 
   # ============================================
   # PX4 SITL 인스턴스 3
@@ -82,7 +82,7 @@ services:
       PX4_SYS_AUTOSTART: "4001"
       PX4_SIM_MODEL: gz_x500
       PX4_GZ_MODEL_POSE: "4,0"
-    command: bash -c "while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 2"
+    command: bash -c "MicroXRCEAgent udp4 -p 8891 & while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 3"
 
   # ============================================
   # PX4 SITL 인스턴스 4
@@ -97,7 +97,7 @@ services:
       PX4_SYS_AUTOSTART: "4001"
       PX4_SIM_MODEL: gz_x500
       PX4_GZ_MODEL_POSE: "6,0"
-    command: bash -c "while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 3"
+    command: bash -c "MicroXRCEAgent udp4 -p 8892 & while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 4"
 
   # ============================================
   # PX4 SITL 인스턴스 5
@@ -112,4 +112,4 @@ services:
       PX4_SYS_AUTOSTART: "4001"
       PX4_SIM_MODEL: gz_x500
       PX4_GZ_MODEL_POSE: "8,0"
-    command: bash -c "while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 4"
+    command: bash -c "MicroXRCEAgent udp4 -p 8893 & while ! gz service -i --service /world/default/scene/info 2>&1 | grep -q 'Service providers'; do sleep 1; done && cd /root/PX4-Autopilot && ./build/px4_sitl_default/bin/px4 -i 5"
