@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# 환경변수
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 빌드/로그
+*.log
+tmp/
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
