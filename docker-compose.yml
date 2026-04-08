@@ -35,4 +35,3 @@ services:
     restart: unless-stopped
     depends_on:
       - ros2
-    command: /root/start.sh
