@@ -1,9 +1,10 @@
 # ============================================
 # ROS2 Jazzy + px4_msgs on Jetson Orin Nano
-# dustynv/ros (L4T r36.4.0 + Ubuntu 24.04 + CUDA 12.8 + ROS2 Jazzy)
+# dustynv/cuda (L4T r36.4.0 + Ubuntu 24.04 + CUDA 12.8)
+# + ROS2 Jazzy apt 설치
 # ============================================
 
-FROM dustynv/ros:jazzy-ros-base-r36.4.0-cu128-24.04
+FROM dustynv/cuda:12.8-samples-r36.4.0-cu128-24.04
 
 LABEL maintainer="kyg"
 LABEL description="ROS2 Jazzy + px4_msgs on Jetson Orin Nano"
@@ -15,15 +16,7 @@ ENV LC_ALL=en_US.UTF-8
 SHELL ["/bin/bash", "-c"]
 
 # ============================================
-# 1. ROS GPG 키 갱신 (베이스 이미지의 만료된 키 교체)
-# ============================================
-RUN rm -f /usr/share/keyrings/ros-archive-keyring.gpg \
-    && curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
-        -o /usr/share/keyrings/ros-archive-keyring.gpg
-
-# ============================================
-# 2. Locale + 시스템 패키지 + ROS2 dev-tools + RMW (zenoh)
-#    (ros-jazzy-ros-base는 베이스 이미지에 포함)
+# 1. Locale + 시스템 기본 패키지
 # ============================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
         locales \
@@ -34,14 +27,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cmake \
         python3-pip \
         python3-dev \
+        gnupg2 \
+        lsb-release \
+        software-properties-common \
+        ca-certificates \
         sudo \
         vim \
         nano \
         tmux \
-        ros-dev-tools \
-        ros-jazzy-rmw-zenoh-cpp \
     && locale-gen en_US en_US.UTF-8 \
     && update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================
+# 2. ROS2 Jazzy 설치 (apt)
+# ============================================
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+        -o /usr/share/keyrings/ros-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
+        http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" \
+        | tee /etc/apt/sources.list.d/ros2.list > /dev/null \
+    && apt-get update && apt-get install -y \
+        ros-jazzy-ros-base \
+        ros-dev-tools \
+        ros-jazzy-rmw-zenoh-cpp \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
@@ -50,16 +59,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN mkdir -p /root/ros2_ws/src \
     && cd /root/ros2_ws/src \
     && git clone -b release/1.17 https://github.com/PX4/px4_msgs.git
-RUN source /opt/ros/jazzy/install/setup.bash \
+RUN source /opt/ros/jazzy/setup.bash \
     && cd /root/ros2_ws && colcon build
 
 # ============================================
 # 4. 환경 설정
 # ============================================
-RUN echo "source /opt/ros/jazzy/install/setup.bash" >> /root/.bashrc \
-    && echo "export AMENT_PREFIX_PATH=/opt/ros/jazzy:\${AMENT_PREFIX_PATH}" >> /root/.bashrc \
-    && echo "export LD_LIBRARY_PATH=/opt/ros/jazzy/lib:\${LD_LIBRARY_PATH}" >> /root/.bashrc \
-    && echo "export PATH=/opt/ros/jazzy/bin:\${PATH}" >> /root/.bashrc \
+RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc \
     && echo "source /root/ros2_ws/install/local_setup.bash" >> /root/.bashrc \
     && echo "export ROS_DOMAIN_ID=0" >> /root/.bashrc \
     && echo "export RMW_IMPLEMENTATION=rmw_zenoh_cpp" >> /root/.bashrc
