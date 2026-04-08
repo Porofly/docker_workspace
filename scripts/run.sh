@@ -8,10 +8,7 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     set -a; source "$PROJECT_ROOT/.env"; set +a
 fi
 
-# X11 forwarding 허용
-xhost +
-
-CONTAINER_NAME="${PROJECT_NAME:-px4ros2-jazzy}"
+CONTAINER_NAME="${CONTAINER_NAME:-px4ros2-jetson}"
 
 if [ "${1:-}" = "--standalone" ]; then
     echo "Starting ${CONTAINER_NAME} (standalone)..."
@@ -19,14 +16,10 @@ if [ "${1:-}" = "--standalone" ]; then
         --name "${CONTAINER_NAME}" \
         --network host \
         --privileged \
-        -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}" \
-        -e DISPLAY="${DISPLAY:-:0}" \
-        -e NVIDIA_VISIBLE_DEVICES=all \
-        -e NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute \
-        -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+        --runtime nvidia \
+        -v /tmp:/tmp \
         -v /dev:/dev \
-        --gpus all \
-        "${CONTAINER_NAME}:latest"
+        "${PROJECT_NAME:-px4ros2-jetson}:latest"
 else
     # Docker Compose 모드
     if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then

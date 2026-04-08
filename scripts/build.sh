@@ -8,7 +8,7 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     set -a; source "$PROJECT_ROOT/.env"; set +a
 fi
 
-IMAGE_NAME="${PROJECT_NAME:-px4ros2-jazzy}"
+IMAGE_NAME="${PROJECT_NAME:-px4ros2-jetson}"
 IMAGE_TAG="${1:-latest}"
 
 echo "Building ${IMAGE_NAME}:${IMAGE_TAG}..."

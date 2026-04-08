@@ -8,7 +8,7 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     set -a; source "$PROJECT_ROOT/.env"; set +a
 fi
 
-CONTAINER_NAME="${PROJECT_NAME:-px4ros2-jazzy}"
+CONTAINER_NAME="${CONTAINER_NAME:-px4ros2-jetson}"
 
 if [ "${1:-}" = "--standalone" ]; then
     echo "Stopping ${CONTAINER_NAME}..."
@@ -23,8 +23,5 @@ else
     echo "Stopping container (preserved)..."
     docker compose -f "$PROJECT_ROOT/docker-compose.yml" stop
 fi
-
-# X11 권한 복원
-xhost -local:docker 2>/dev/null || true
 
 echo "Done."
