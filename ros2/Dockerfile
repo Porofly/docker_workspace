@@ -25,8 +25,7 @@ RUN rm -f /usr/share/keyrings/ros-archive-keyring.gpg \
 # 2. Locale + 시스템 패키지 + ROS2 dev-tools + RMW (zenoh)
 #    (ros-jazzy-ros-base는 베이스 이미지에 포함)
 # ============================================
-RUN echo 'wireshark-common wireshark-common/install-setuid boolean false' | debconf-set-selections \
-    && apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
         locales \
         curl \
         wget \
@@ -39,9 +38,6 @@ RUN echo 'wireshark-common wireshark-common/install-setuid boolean false' | debc
         vim \
         nano \
         tmux \
-        bmon \
-        tcpdump \
-        tshark \
         ros-dev-tools \
         ros-jazzy-rmw-zenoh-cpp \
     && locale-gen en_US en_US.UTF-8 \
