@@ -54,13 +54,13 @@ RUN echo 'wireshark-common wireshark-common/install-setuid boolean false' | debc
 RUN mkdir -p /root/ros2_ws/src \
     && cd /root/ros2_ws/src \
     && git clone -b release/1.17 https://github.com/PX4/px4_msgs.git
-RUN source /opt/ros/jazzy/setup.bash \
+RUN source /opt/ros/jazzy/install/setup.bash \
     && cd /root/ros2_ws && colcon build
 
 # ============================================
 # 4. 환경 설정
 # ============================================
-RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc \
+RUN echo "source /opt/ros/jazzy/install/setup.bash" >> /root/.bashrc \
     && echo "source /root/ros2_ws/install/local_setup.bash" >> /root/.bashrc \
     && echo "export ROS_DOMAIN_ID=0" >> /root/.bashrc \
     && echo "export RMW_IMPLEMENTATION=rmw_zenoh_cpp" >> /root/.bashrc
