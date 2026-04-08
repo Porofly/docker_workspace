@@ -55,7 +55,9 @@ RUN echo 'wireshark-common wireshark-common/install-setuid boolean false' | debc
 # ============================================
 # 3. PX4-Autopilot v1.17.0-rc2 (SITL)
 # ============================================
-RUN git clone -b v1.17.0-rc2 --recursive \
+RUN pip config set global.index-url https://pypi.org/simple/ \
+    && pip config unset global.extra-index-url 2>/dev/null || true \
+    && git clone -b v1.17.0-rc2 --recursive \
         https://github.com/PX4/PX4-Autopilot.git /root/PX4-Autopilot \
     && cd /root/PX4-Autopilot \
     && bash Tools/setup/ubuntu.sh --no-nuttx \
