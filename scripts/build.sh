@@ -11,6 +11,11 @@ fi
 IMAGE_NAME="${PROJECT_NAME:-px4ros2-jetson}"
 IMAGE_TAG="${1:-latest}"
 
-echo "Building ${IMAGE_NAME}:${IMAGE_TAG}..."
-docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" "$PROJECT_ROOT"
-echo "Done: ${IMAGE_NAME}:${IMAGE_TAG}"
+echo "=== Building PX4 image ==="
+docker build -t "${IMAGE_NAME}-px4:${IMAGE_TAG}" -f "$PROJECT_ROOT/px4/Dockerfile" "$PROJECT_ROOT"
+echo "Done: ${IMAGE_NAME}-px4:${IMAGE_TAG}"
+
+echo ""
+echo "=== Building ROS2 image ==="
+docker build -t "${IMAGE_NAME}-ros2:${IMAGE_TAG}" -f "$PROJECT_ROOT/ros2/Dockerfile" "$PROJECT_ROOT"
+echo "Done: ${IMAGE_NAME}-ros2:${IMAGE_TAG}"

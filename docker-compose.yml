@@ -1,7 +1,23 @@
 services:
-  drone:
-    image: ${PROJECT_NAME:-px4ros2-jetson}:latest
-    container_name: ${CONTAINER_NAME:-px4ros2-jetson}
+  px4:
+    build:
+      context: .
+      dockerfile: px4/Dockerfile
+    image: ${PROJECT_NAME:-px4ros2-jetson}-px4:latest
+    container_name: px4
+    privileged: true
+    network_mode: host
+    ipc: host
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  ros2:
+    build:
+      context: .
+      dockerfile: ros2/Dockerfile
+    image: ${PROJECT_NAME:-px4ros2-jetson}-ros2:latest
+    container_name: ros2
     privileged: true
     network_mode: host
     ipc: host
@@ -9,9 +25,6 @@ services:
     volumes:
       - /tmp:/tmp
       - /dev:/dev
-    environment:
-      PX4_SYS_AUTOSTART: 4001
-      PX4_SIM_MODEL: gz_x500
     stdin_open: true
     tty: true
     restart: unless-stopped
