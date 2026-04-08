@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cmake \
         python3-pip \
         python3-dev \
+        lsb-release \
         sudo \
         vim \
         nano \
