@@ -44,6 +44,4 @@ RUN git clone -b v1.17.0-rc2 --recursive \
     && bash Tools/setup/ubuntu.sh --no-nuttx \
     && make px4_sitl_zenoh
 
-COPY start.sh /root/start.sh
-RUN chmod +x /root/start.sh
 CMD ["bash"]

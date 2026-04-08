@@ -28,6 +28,8 @@ services:
     ipc: host
     environment:
       PX4_INSTANCE: 0
+    volumes:
+      - ./start.sh:/root/start.sh
     stdin_open: true
     tty: true
     restart: unless-stopped
