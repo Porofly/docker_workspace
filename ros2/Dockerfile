@@ -67,7 +67,6 @@ RUN source /opt/ros/jazzy/setup.bash \
 # ============================================
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc \
     && echo "source /root/ros2_ws/install/local_setup.bash" >> /root/.bashrc \
-    && echo "export ROS_DOMAIN_ID=0" >> /root/.bashrc \
     && echo "export RMW_IMPLEMENTATION=rmw_zenoh_cpp" >> /root/.bashrc
 
 COPY ros_entrypoint.sh /ros_entrypoint.sh

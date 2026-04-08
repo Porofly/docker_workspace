@@ -44,11 +44,6 @@ RUN git clone -b v1.17.0-rc2 --recursive \
     && bash Tools/setup/ubuntu.sh --no-nuttx \
     && make px4_sitl_zenoh
 
-# ============================================
-# 3. 환경 설정
-# ============================================
-RUN echo "export PX4_INSTANCE=0" >> /root/.bashrc
-
 COPY start.sh /root/start.sh
 RUN chmod +x /root/start.sh
 CMD ["bash"]
