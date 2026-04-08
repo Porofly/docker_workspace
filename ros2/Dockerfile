@@ -57,6 +57,9 @@ RUN source /opt/ros/jazzy/install/setup.bash \
 # 4. 환경 설정
 # ============================================
 RUN echo "source /opt/ros/jazzy/install/setup.bash" >> /root/.bashrc \
+    && echo "export AMENT_PREFIX_PATH=/opt/ros/jazzy:\${AMENT_PREFIX_PATH}" >> /root/.bashrc \
+    && echo "export LD_LIBRARY_PATH=/opt/ros/jazzy/lib:\${LD_LIBRARY_PATH}" >> /root/.bashrc \
+    && echo "export PATH=/opt/ros/jazzy/bin:\${PATH}" >> /root/.bashrc \
     && echo "source /root/ros2_ws/install/local_setup.bash" >> /root/.bashrc \
     && echo "export ROS_DOMAIN_ID=0" >> /root/.bashrc \
     && echo "export RMW_IMPLEMENTATION=rmw_zenoh_cpp" >> /root/.bashrc
