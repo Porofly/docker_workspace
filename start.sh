@@ -7,9 +7,11 @@ INSTANCE=${1:-${PX4_INSTANCE:-0}}
 echo "Starting PX4 SITL Zenoh (instance ${INSTANCE})..."
 cd /root/PX4-Autopilot
 
-# extras 스크립트로 ZENOH_ENABLE 자동 설정
-EXTRAS_DIR=build/px4_sitl_zenoh/rootfs/etc/init.d-posix
-mkdir -p ${EXTRAS_DIR}
-echo "param set ZENOH_ENABLE 1" > ${EXTRAS_DIR}/rc.autostart_extras
+# rcS 패치: ZENOH_ENABLE 조건 체크를 제거하고 zenoh를 항상 시작
+RCS=build/px4_sitl_zenoh/etc/init.d-posix/rcS
+if ! grep -q "# ZENOH_AUTO_START_PATCHED" "$RCS"; then
+    sed -i 's|if param greater -s ZENOH_ENABLE 0|# ZENOH_AUTO_START_PATCHED\nif true|' "$RCS"
+    echo "rcS patched for automatic zenoh start"
+fi
 
 ./build/px4_sitl_zenoh/bin/px4 -i ${INSTANCE}
