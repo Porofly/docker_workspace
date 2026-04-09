@@ -9,9 +9,12 @@ services:
     network_mode: host
     ipc: host
     runtime: nvidia
+    environment:
+      ZENOH_ROUTER_CONFIG_URI: /root/zenoh_config/router_config.json5
     volumes:
       - /tmp:/tmp
       - /dev:/dev
+      - ./zenoh_config:/root/zenoh_config
     stdin_open: true
     tty: true
     restart: unless-stopped

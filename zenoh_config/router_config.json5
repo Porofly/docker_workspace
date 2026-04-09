@@ -1,0 +1,49 @@
+{
+  mode: "router",
+
+  /// 드론 간 자동 발견 (같은 WiFi LAN)
+  scouting: {
+    multicast: {
+      enabled: true,
+      autoconnect: { router: ["router"], peer: ["router", "peer"], client: ["router"] },
+      listen: true,
+    },
+    gossip: {
+      enabled: true,
+      autoconnect: { router: ["router"], peer: ["router", "peer"] },
+    },
+  },
+
+  /// 내부 토픽 격리: /fmu/** 는 드론 내부에서만 유효
+  access_control: {
+    enabled: true,
+    default_permission: "allow",
+    rules: [
+      {
+        id: "block_fmu_external",
+        permission: "deny",
+        flows: ["egress", "ingress"],
+        messages: [
+          "put", "delete",
+          "declare_subscriber", "declare_queryable",
+          "query", "reply",
+          "liveliness_token", "liveliness_query", "declare_liveliness_subscriber",
+        ],
+        key_exprs: [
+          "fmu/**",
+          "**/fmu/**",
+        ],
+      },
+    ],
+    subjects: [
+      { id: "all_external" },
+    ],
+    policies: [
+      {
+        id: "policy_external_fmu",
+        rules: ["block_fmu_external"],
+        subjects: ["all_external"],
+      },
+    ],
+  },
+}
