@@ -36,13 +36,17 @@
       },
     ],
     subjects: [
-      { id: "all_external" },
+      {
+        /// 외부 네트워크 인터페이스만 대상으로 함 (loopback 제외)
+        id: "external_ifaces",
+        interfaces: ["wlP1p1s0", "eno1"],
+      },
     ],
     policies: [
       {
         id: "policy_external_fmu",
         rules: ["block_fmu_external"],
-        subjects: ["all_external"],
+        subjects: ["external_ifaces"],
       },
     ],
   },
