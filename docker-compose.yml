@@ -11,6 +11,7 @@ services:
     runtime: nvidia
     environment:
       ZENOH_ROUTER_CONFIG_URI: /root/zenoh_config/router_config.json5
+      RMW_IMPLEMENTATION: rmw_zenoh_cpp
       DRONE_ID: ${DRONE_ID:-1}
     volumes:
       - /tmp:/tmp
@@ -19,24 +20,11 @@ services:
     stdin_open: true
     tty: true
     restart: unless-stopped
-    command: ros2 run rmw_zenoh_cpp rmw_zenohd
-
-  bridge:
-    image: ${PROJECT_NAME:-px4ros2-jetson}-ros2:latest
-    container_name: bridge
-    network_mode: host
-    ipc: host
-    environment:
-      RMW_IMPLEMENTATION: rmw_zenoh_cpp
-      DRONE_ID: ${DRONE_ID:-1}
-    stdin_open: true
-    tty: true
-    restart: unless-stopped
-    depends_on:
-      - ros2
     command: >
       bash -c "source /opt/ros/jazzy/setup.bash &&
                source /root/ros2_ws/install/local_setup.bash &&
+               ros2 run rmw_zenoh_cpp rmw_zenohd &
+               sleep 2 &&
                ros2 launch swarm_bridge swarm_bridge.launch.py"
 
   px4:
