@@ -1,0 +1,133 @@
+import json
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+
+from geometry_msgs.msg import PoseStamped
+from std_msgs.msg import String
+from px4_msgs.msg import VehicleLocalPosition, VehicleStatus
+
+
+class SwarmBridge(Node):
+    """PX4 내부 토픽을 swarm 공유 토픽으로 브릿지하는 노드.
+
+    구독 (내부):
+        /fmu/out/vehicle_local_position -> /swarm/drone_{id}/pose (10Hz)
+        /fmu/out/vehicle_status         -> /swarm/drone_{id}/status (1Hz)
+    """
+
+    def __init__(self):
+        super().__init__('swarm_bridge')
+
+        # DRONE_ID 파라미터
+        self.declare_parameter('drone_id', 1)
+        self.drone_id = self.get_parameter('drone_id').value
+
+        self.get_logger().info(f'Swarm Bridge started for drone_{self.drone_id}')
+
+        # QoS: PX4 토픽은 BEST_EFFORT 사용
+        px4_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+
+        # QoS: Swarm 토픽은 RELIABLE 사용
+        swarm_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+        )
+
+        # --- Pose Bridge ---
+        # 구독: PX4 로컬 위치
+        self.sub_local_pos = self.create_subscription(
+            VehicleLocalPosition,
+            '/fmu/out/vehicle_local_position',
+            self.local_position_callback,
+            px4_qos,
+        )
+
+        # 발행: swarm pose (10Hz throttle)
+        self.pub_pose = self.create_publisher(
+            PoseStamped,
+            f'/swarm/drone_{self.drone_id}/pose',
+            swarm_qos,
+        )
+
+        # Pose throttle: 10Hz (PX4는 ~50Hz로 발행하므로 다운샘플링)
+        self.pose_timer = self.create_timer(0.1, self.publish_pose)
+        self.latest_local_pos = None
+
+        # --- Status Bridge ---
+        # 구독: PX4 기체 상태
+        self.sub_vehicle_status = self.create_subscription(
+            VehicleStatus,
+            '/fmu/out/vehicle_status',
+            self.vehicle_status_callback,
+            px4_qos,
+        )
+
+        # 발행: swarm status (1Hz)
+        self.pub_status = self.create_publisher(
+            String,
+            f'/swarm/drone_{self.drone_id}/status',
+            swarm_qos,
+        )
+
+        self.status_timer = self.create_timer(1.0, self.publish_status)
+        self.latest_vehicle_status = None
+
+    def local_position_callback(self, msg: VehicleLocalPosition):
+        self.latest_local_pos = msg
+
+    def publish_pose(self):
+        if self.latest_local_pos is None:
+            return
+
+        msg = self.latest_local_pos
+        pose = PoseStamped()
+        pose.header.stamp = self.get_clock().now().to_msg()
+        pose.header.frame_id = f'drone_{self.drone_id}/local'
+
+        # PX4 NED -> ROS2 ENU 변환
+        pose.pose.position.x = msg.y     # NED.E -> ENU.X
+        pose.pose.position.y = msg.x     # NED.N -> ENU.Y
+        pose.pose.position.z = -msg.z    # NED.D -> ENU.Z (부호 반전)
+
+        self.pub_pose.publish(pose)
+
+    def vehicle_status_callback(self, msg: VehicleStatus):
+        self.latest_vehicle_status = msg
+
+    def publish_status(self):
+        if self.latest_vehicle_status is None:
+            return
+
+        msg = self.latest_vehicle_status
+        status = String()
+        status.data = json.dumps({
+            'drone_id': self.drone_id,
+            'timestamp': self.get_clock().now().nanoseconds,
+            'arming_state': int(msg.arming_state),
+            'nav_state': int(msg.nav_state),
+            'failsafe': bool(msg.failsafe),
+        })
+
+        self.pub_status.publish(status)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = SwarmBridge()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

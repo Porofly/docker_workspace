@@ -54,11 +54,12 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# 3. px4_msgs ROS2 워크스페이스
+# 3. px4_msgs + swarm_bridge ROS2 워크스페이스
 # ============================================
 RUN mkdir -p /root/ros2_ws/src \
     && cd /root/ros2_ws/src \
     && git clone -b release/1.17 https://github.com/PX4/px4_msgs.git
+COPY ros2_ws/src/swarm_bridge /root/ros2_ws/src/swarm_bridge
 RUN source /opt/ros/jazzy/setup.bash \
     && cd /root/ros2_ws && colcon build
 
