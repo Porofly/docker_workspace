@@ -20,3 +20,8 @@ Thumbs.db
 tmp/
 dist/
 build/
+
+# 네트워크 캡처 결과물 (network_capture.sh)
+captures/
+*.pcap
+*.pcapng
