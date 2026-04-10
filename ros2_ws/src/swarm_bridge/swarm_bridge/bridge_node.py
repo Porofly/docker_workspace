@@ -1,4 +1,5 @@
 import json
+import os
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
@@ -17,27 +18,26 @@ class SwarmBridge(Node):
     """
 
     def __init__(self):
-        super().__init__('swarm_bridge')
+        # DRONE_ID를 환경변수에서 읽어 노드 이름에 포함
+        drone_id = int(os.environ.get('DRONE_ID', '1'))
+        super().__init__(f'swarm_bridge_drone_{drone_id}')
 
-        # DRONE_ID 파라미터
-        self.declare_parameter('drone_id', 1)
-        self.drone_id = self.get_parameter('drone_id').value
-
+        self.drone_id = drone_id
         self.get_logger().info(f'Swarm Bridge started for drone_{self.drone_id}')
 
-        # QoS: PX4 토픽은 BEST_EFFORT 사용
-        px4_qos = QoSProfile(
+        # QoS: BEST_EFFORT
+        BEST_EFFORT = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
         )
 
-        # QoS: Swarm 토픽은 RELIABLE 사용
-        swarm_qos = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10,
-        )
+        # # QoS: RELIABLE (필요시 사용)
+        # RELIABLE = QoSProfile(
+        #     reliability=ReliabilityPolicy.RELIABLE,
+        #     history=HistoryPolicy.KEEP_LAST,
+        #     depth=10,
+        # )
 
         # --- Pose Bridge ---
         # 구독: PX4 로컬 위치
@@ -45,14 +45,14 @@ class SwarmBridge(Node):
             VehicleLocalPosition,
             '/fmu/out/vehicle_local_position',
             self.local_position_callback,
-            px4_qos,
+            BEST_EFFORT,
         )
 
         # 발행: swarm pose (10Hz throttle)
         self.pub_pose = self.create_publisher(
             PoseStamped,
             f'/swarm/drone_{self.drone_id}/pose',
-            swarm_qos,
+            BEST_EFFORT,
         )
 
         # Pose throttle: 10Hz (PX4는 ~50Hz로 발행하므로 다운샘플링)
@@ -65,14 +65,14 @@ class SwarmBridge(Node):
             VehicleStatus,
             '/fmu/out/vehicle_status',
             self.vehicle_status_callback,
-            px4_qos,
+            BEST_EFFORT,
         )
 
         # 발행: swarm status (1Hz)
         self.pub_status = self.create_publisher(
             String,
             f'/swarm/drone_{self.drone_id}/status',
-            swarm_qos,
+            BEST_EFFORT,
         )
 
         self.status_timer = self.create_timer(1.0, self.publish_status)
