@@ -15,17 +15,17 @@
   },
 
   /// 기본 격리 정책:
-  /// - 외부 네트워크 인터페이스(wlP1p1s0, eno1)에서는 모든 토픽을 기본적으로 차단
-  /// - swarm/** 만 외부로 허용 (드론 간 공유 채널)
-  /// - 내부 인터페이스(lo)는 ACL 대상이 아니므로 모든 통신 자유
+  /// - default_permission: deny (아무것도 안 쓴 것은 전부 차단)
+  /// - 내부 lo 인터페이스: 모든 토픽 허용 (PX4 <-> ROS2 내부 통신)
+  /// - 외부 wlP1p1s0/eno1 인터페이스: swarm/** 만 허용 (드론 간 공유 채널)
   access_control: {
     enabled: true,
-    default_permission: "allow",
+    default_permission: "deny",
     rules: [
-      /// Rule 1: 외부 인터페이스 기본 차단 (모든 토픽)
+      /// 모든 토픽 허용
       {
-        id: "deny_all_external",
-        permission: "deny",
+        id: "allow_all",
+        permission: "allow",
         flows: ["egress", "ingress"],
         messages: [
           "put", "delete",
@@ -35,9 +35,9 @@
         ],
         key_exprs: ["**"],
       },
-      /// Rule 2: swarm/** 토픽은 외부 공유 허용
+      /// swarm/** 만 허용
       {
-        id: "allow_swarm_external",
+        id: "allow_swarm",
         permission: "allow",
         flows: ["egress", "ingress"],
         messages: [
@@ -51,17 +51,27 @@
     ],
     subjects: [
       {
-        /// 외부 네트워크 인터페이스만 대상으로 함 (loopback 제외)
+        /// 내부 loopback 인터페이스
+        id: "internal_ifaces",
+        interfaces: ["lo"],
+      },
+      {
+        /// 외부 네트워크 인터페이스
         id: "external_ifaces",
         interfaces: ["wlP1p1s0", "eno1"],
       },
     ],
     policies: [
       {
-        /// 외부 인터페이스에 두 규칙을 순서대로 적용
-        /// Zenoh는 뒤에 나온 규칙이 우선하므로 swarm/**이 deny를 override
-        id: "policy_external_isolation",
-        rules: ["deny_all_external", "allow_swarm_external"],
+        /// 내부 인터페이스: 모든 토픽 허용
+        id: "policy_internal_all",
+        rules: ["allow_all"],
+        subjects: ["internal_ifaces"],
+      },
+      {
+        /// 외부 인터페이스: swarm/** 만 허용
+        id: "policy_external_swarm",
+        rules: ["allow_swarm"],
         subjects: ["external_ifaces"],
       },
     ],
