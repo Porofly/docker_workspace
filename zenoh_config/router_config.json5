@@ -14,18 +14,19 @@
     },
   },
 
-  /// 기본 격리 정책:
-  /// - default_permission: deny (아무것도 안 쓴 것은 전부 차단)
-  /// - 내부 lo 인터페이스: 모든 토픽 허용 (PX4 <-> ROS2 내부 통신)
-  /// - 외부 wlP1p1s0/eno1 인터페이스: swarm/** 만 허용 (드론 간 공유 채널)
+  /// 토픽 격리 정책:
+  /// - default_permission: allow (내부 local 통신은 영향 받지 않음)
+  /// - 외부 인터페이스(wlP1p1s0, eno1)에서는 아래 토픽만 차단
+  ///   * fmu/**: PX4 내부 토픽
+  ///   * rosout, parameter_events, tf/tf_static: ROS2 시스템 토픽
+  ///   * 즉, swarm/** 등 사용자 정의 토픽만 드론 간 공유됨
   access_control: {
     enabled: true,
-    default_permission: "deny",
+    default_permission: "allow",
     rules: [
-      /// 모든 토픽 허용
       {
-        id: "allow_all",
-        permission: "allow",
+        id: "block_internal_topics_external",
+        permission: "deny",
         flows: ["egress", "ingress"],
         messages: [
           "put", "delete",
@@ -33,45 +34,31 @@
           "query", "reply",
           "liveliness_token", "liveliness_query", "declare_liveliness_subscriber",
         ],
-        key_exprs: ["**"],
-      },
-      /// swarm/** 만 허용
-      {
-        id: "allow_swarm",
-        permission: "allow",
-        flows: ["egress", "ingress"],
-        messages: [
-          "put", "delete",
-          "declare_subscriber", "declare_queryable",
-          "query", "reply",
-          "liveliness_token", "liveliness_query", "declare_liveliness_subscriber",
+        key_exprs: [
+          "fmu/**",
+          "**/fmu/**",
+          "rosout/**",
+          "**/rosout/**",
+          "parameter_events/**",
+          "**/parameter_events/**",
+          "tf/**",
+          "**/tf/**",
+          "tf_static/**",
+          "**/tf_static/**",
         ],
-        key_exprs: ["swarm/**"],
       },
     ],
     subjects: [
       {
-        /// 내부 loopback 인터페이스
-        id: "internal_ifaces",
-        interfaces: ["lo"],
-      },
-      {
-        /// 외부 네트워크 인터페이스
+        /// 외부 네트워크 인터페이스만 대상으로 함 (loopback 제외)
         id: "external_ifaces",
         interfaces: ["wlP1p1s0", "eno1"],
       },
     ],
     policies: [
       {
-        /// 내부 인터페이스: 모든 토픽 허용
-        id: "policy_internal_all",
-        rules: ["allow_all"],
-        subjects: ["internal_ifaces"],
-      },
-      {
-        /// 외부 인터페이스: swarm/** 만 허용
-        id: "policy_external_swarm",
-        rules: ["allow_swarm"],
+        id: "policy_external_isolation",
+        rules: ["block_internal_topics_external"],
         subjects: ["external_ifaces"],
       },
     ],
