@@ -36,9 +36,6 @@ services:
     privileged: true
     network_mode: host
     ipc: host
-    environment:
-      PX4_INSTANCE: 0
-      DRONE_ID: ${DRONE_ID:-1}
     volumes:
       - ./start.sh:/root/start.sh
     stdin_open: true
