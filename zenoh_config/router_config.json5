@@ -14,13 +14,17 @@
     },
   },
 
-  /// 내부 토픽 격리: /fmu/** 는 드론 내부에서만 유효
+  /// 기본 격리 정책:
+  /// - 외부 네트워크 인터페이스(wlP1p1s0, eno1)에서는 모든 토픽을 기본적으로 차단
+  /// - swarm/** 만 외부로 허용 (드론 간 공유 채널)
+  /// - 내부 인터페이스(lo)는 ACL 대상이 아니므로 모든 통신 자유
   access_control: {
     enabled: true,
     default_permission: "allow",
     rules: [
+      /// Rule 1: 외부 인터페이스 기본 차단 (모든 토픽)
       {
-        id: "block_fmu_external",
+        id: "deny_all_external",
         permission: "deny",
         flows: ["egress", "ingress"],
         messages: [
@@ -29,10 +33,20 @@
           "query", "reply",
           "liveliness_token", "liveliness_query", "declare_liveliness_subscriber",
         ],
-        key_exprs: [
-          "fmu/**",
-          "**/fmu/**",
+        key_exprs: ["**"],
+      },
+      /// Rule 2: swarm/** 토픽은 외부 공유 허용
+      {
+        id: "allow_swarm_external",
+        permission: "allow",
+        flows: ["egress", "ingress"],
+        messages: [
+          "put", "delete",
+          "declare_subscriber", "declare_queryable",
+          "query", "reply",
+          "liveliness_token", "liveliness_query", "declare_liveliness_subscriber",
         ],
+        key_exprs: ["swarm/**"],
       },
     ],
     subjects: [
@@ -44,8 +58,10 @@
     ],
     policies: [
       {
-        id: "policy_external_fmu",
-        rules: ["block_fmu_external"],
+        /// 외부 인터페이스에 두 규칙을 순서대로 적용
+        /// Zenoh는 뒤에 나온 규칙이 우선하므로 swarm/**이 deny를 override
+        id: "policy_external_isolation",
+        rules: ["deny_all_external", "allow_swarm_external"],
         subjects: ["external_ifaces"],
       },
     ],
