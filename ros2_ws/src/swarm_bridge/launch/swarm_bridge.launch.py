@@ -9,4 +9,9 @@ def generate_launch_description():
             executable='bridge_node',
             output='screen',
         ),
+        Node(
+            package='swarm_bridge',
+            executable='monitor_node',
+            output='screen',
+        ),
     ])

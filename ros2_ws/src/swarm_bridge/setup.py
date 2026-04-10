@@ -22,6 +22,7 @@ setup(
     entry_points={
         'console_scripts': [
             'bridge_node = swarm_bridge.bridge_node:main',
+            'monitor_node = swarm_bridge.monitor_node:main',
         ],
     },
 )
