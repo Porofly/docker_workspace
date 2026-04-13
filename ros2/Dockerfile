@@ -1,7 +1,7 @@
 # ============================================
 # ROS2 Jazzy + px4_msgs on Jetson Orin Nano
 # dustynv/cuda (L4T r36.4.0 + Ubuntu 24.04 + CUDA 12.8)
-# + ROS2 Jazzy apt 설치
+# + ROS2 Jazzy apt 설치 (uXRCE-DDS)
 # ============================================
 
 FROM dustynv/cuda:12.8-samples-r36.4.0-cu128-24.04
@@ -50,7 +50,7 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     && apt-get update && apt-get install -y \
         ros-jazzy-ros-base \
         ros-dev-tools \
-        ros-jazzy-rmw-zenoh-cpp \
+        ros-jazzy-rmw-fastrtps-cpp \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
@@ -64,11 +64,28 @@ RUN source /opt/ros/jazzy/setup.bash \
     && cd /root/ros2_ws && colcon build
 
 # ============================================
-# 4. 환경 설정
+# 3-b. Micro XRCE-DDS Agent (eProsima standalone)
+# ============================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libssl-dev \
+        libasio-dev \
+        libtinyxml2-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && git clone https://github.com/eProsima/Micro-XRCE-DDS-Agent.git /tmp/uxrce-agent \
+    && cd /tmp/uxrce-agent \
+    && mkdir build && cd build \
+    && cmake .. \
+    && make -j$(nproc) \
+    && make install \
+    && ldconfig \
+    && rm -rf /tmp/uxrce-agent
+
+# ============================================
+# 4. 환경 설정 (uXRCE-DDS)
 # ============================================
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc \
     && echo "source /root/ros2_ws/install/local_setup.bash" >> /root/.bashrc \
-    && echo "export RMW_IMPLEMENTATION=rmw_zenoh_cpp" >> /root/.bashrc
+    && echo "export RMW_IMPLEMENTATION=rmw_fastrtps_cpp" >> /root/.bashrc
 
 COPY ros_entrypoint.sh /ros_entrypoint.sh
 RUN chmod +x /ros_entrypoint.sh

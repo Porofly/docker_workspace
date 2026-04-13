@@ -1,12 +1,12 @@
 # ============================================
-# PX4-Autopilot v1.17.0-rc2 SITL (Zenoh)
+# PX4-Autopilot v1.17.0-rc2 SITL (uXRCE-DDS)
 # Ubuntu 22.04 (Jammy) ARM64
 # ============================================
 
 FROM arm64v8/ubuntu:22.04
 
 LABEL maintainer="kyg"
-LABEL description="PX4 SITL Zenoh on Jetson Orin Nano"
+LABEL description="PX4 SITL uXRCE-DDS on Jetson Orin Nano"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=en_US.UTF-8
@@ -36,12 +36,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# 2. PX4-Autopilot v1.17.0-rc2 (SITL Zenoh)
+# 2. PX4-Autopilot v1.17.0-rc2 (SITL uXRCE-DDS)
 # ============================================
 RUN git clone -b v1.17.0-rc2 --recursive \
         https://github.com/PX4/PX4-Autopilot.git /root/PX4-Autopilot \
     && cd /root/PX4-Autopilot \
     && bash Tools/setup/ubuntu.sh --no-nuttx \
-    && make px4_sitl_zenoh
+    && make px4_sitl_default
 
 CMD ["bash"]

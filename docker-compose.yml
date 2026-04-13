@@ -10,20 +10,18 @@ services:
     ipc: host
     runtime: nvidia
     environment:
-      ZENOH_ROUTER_CONFIG_URI: /root/zenoh_config/router_config.json5
-      RMW_IMPLEMENTATION: rmw_zenoh_cpp
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
       DRONE_ID: ${DRONE_ID:-1}
     volumes:
       - /tmp:/tmp
       - /dev:/dev
-      - ./zenoh_config:/root/zenoh_config
     stdin_open: true
     tty: true
     restart: unless-stopped
     command: >
       bash -c "source /opt/ros/jazzy/setup.bash &&
                source /root/ros2_ws/install/local_setup.bash &&
-               ros2 run rmw_zenoh_cpp rmw_zenohd &
+               MicroXRCEAgent udp4 --port 8888 &
                sleep 2 &&
                ros2 launch swarm_bridge swarm_bridge.launch.py"
 
