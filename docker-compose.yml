@@ -21,7 +21,7 @@ services:
     command: >
       bash -c "source /opt/ros/jazzy/setup.bash &&
                source /root/ros2_ws/install/local_setup.bash &&
-               UXRCE_PORT=$$((8888 + DRONE_ID)) &&
+               UXRCE_PORT=$$((8888 + $DRONE_ID)) &&
                echo \"Starting MicroXRCEAgent on port $$UXRCE_PORT\" &&
                MicroXRCEAgent udp4 --port $$UXRCE_PORT &
                sleep 2 &&
@@ -36,6 +36,8 @@ services:
     privileged: true
     network_mode: host
     ipc: host
+    environment:
+      DRONE_ID: ${DRONE_ID:-1}
     volumes:
       - ./start.sh:/root/start.sh
     stdin_open: true

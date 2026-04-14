@@ -13,8 +13,8 @@ class SwarmBridge(Node):
     """PX4 내부 토픽을 swarm 공유 토픽으로 브릿지하는 노드.
 
     구독 (내부):
-        /fmu/out/vehicle_local_position -> /swarm/drone_{id}/pose (10Hz)
-        /fmu/out/vehicle_status_v1         -> /swarm/drone_{id}/status (1Hz)
+        /px4_{id}/fmu/out/vehicle_local_position_v1 -> /swarm/drone_{id}/pose (10Hz)
+        /px4_{id}/fmu/out/vehicle_status_v1         -> /swarm/drone_{id}/status (1Hz)
     """
 
     def __init__(self):
@@ -25,11 +25,6 @@ class SwarmBridge(Node):
         self.drone_id = drone_id
         self.get_logger().info(f'Swarm Bridge started for drone_{self.drone_id}')
 
-        # PX4 SITL 인스턴스 번호 = DRONE_ID (1-based 직접 사용)
-        # DRONE_ID=1 -> px4 -i 1 -> /px4_1/fmu/...
-        px4_ns = f'/px4_{drone_id}'
-        self.get_logger().info(f'PX4 namespace: {px4_ns}')
-
         # QoS: BEST_EFFORT
         BEST_EFFORT = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -37,11 +32,13 @@ class SwarmBridge(Node):
             depth=1,
         )
 
+        px4_ns = f'/px4_{drone_id}'
+
         # --- Pose Bridge ---
-        # 구독: PX4 로컬 위치 (인스턴스 네임스페이스 포함)
+        # 구독: PX4 로컬 위치 (/px4_{N}/fmu/out/vehicle_local_position_v1)
         self.sub_local_pos = self.create_subscription(
             VehicleLocalPosition,
-            f'{px4_ns}/fmu/out/vehicle_local_position',
+            f'{px4_ns}/fmu/out/vehicle_local_position_v1',
             self.local_position_callback,
             BEST_EFFORT,
         )
@@ -58,10 +55,10 @@ class SwarmBridge(Node):
         self.latest_local_pos = None
 
         # --- Status Bridge ---
-        # 구독: PX4 기체 상태 (인스턴스 네임스페이스 포함)
+        # 구독: PX4 기체 상태 (/px4_{N}/fmu/out/vehicle_status_v1)
         self.sub_vehicle_status = self.create_subscription(
             VehicleStatus,
-            f'{px4_ns}/fmu/out/vehicle_status',
+            f'{px4_ns}/fmu/out/vehicle_status_v1',
             self.vehicle_status_callback,
             BEST_EFFORT,
         )
