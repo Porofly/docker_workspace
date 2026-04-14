@@ -25,6 +25,11 @@ class SwarmBridge(Node):
         self.drone_id = drone_id
         self.get_logger().info(f'Swarm Bridge started for drone_{self.drone_id}')
 
+        # PX4 SITL 인스턴스 번호 = DRONE_ID (1-based 직접 사용)
+        # DRONE_ID=1 -> px4 -i 1 -> /px4_1/fmu/...
+        px4_ns = f'/px4_{drone_id}'
+        self.get_logger().info(f'PX4 namespace: {px4_ns}')
+
         # QoS: BEST_EFFORT
         BEST_EFFORT = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -32,18 +37,11 @@ class SwarmBridge(Node):
             depth=1,
         )
 
-        # # QoS: RELIABLE (필요시 사용)
-        # RELIABLE = QoSProfile(
-        #     reliability=ReliabilityPolicy.RELIABLE,
-        #     history=HistoryPolicy.KEEP_LAST,
-        #     depth=10,
-        # )
-
         # --- Pose Bridge ---
-        # 구독: PX4 로컬 위치
+        # 구독: PX4 로컬 위치 (인스턴스 네임스페이스 포함)
         self.sub_local_pos = self.create_subscription(
             VehicleLocalPosition,
-            '/fmu/out/vehicle_local_position',
+            f'{px4_ns}/fmu/out/vehicle_local_position',
             self.local_position_callback,
             BEST_EFFORT,
         )
@@ -60,10 +58,10 @@ class SwarmBridge(Node):
         self.latest_local_pos = None
 
         # --- Status Bridge ---
-        # 구독: PX4 기체 상태
+        # 구독: PX4 기체 상태 (인스턴스 네임스페이스 포함)
         self.sub_vehicle_status = self.create_subscription(
             VehicleStatus,
-            '/fmu/out/vehicle_status_v1',
+            f'{px4_ns}/fmu/out/vehicle_status',
             self.vehicle_status_callback,
             BEST_EFFORT,
         )

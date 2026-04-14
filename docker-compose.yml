@@ -21,7 +21,9 @@ services:
     command: >
       bash -c "source /opt/ros/jazzy/setup.bash &&
                source /root/ros2_ws/install/local_setup.bash &&
-               MicroXRCEAgent udp4 --port 8888 &
+               UXRCE_PORT=$$((8888 + DRONE_ID)) &&
+               echo \"Starting MicroXRCEAgent on port $$UXRCE_PORT\" &&
+               MicroXRCEAgent udp4 --port $$UXRCE_PORT &
                sleep 2 &&
                ros2 launch swarm_bridge swarm_bridge.launch.py"
 
