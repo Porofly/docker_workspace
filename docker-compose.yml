@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: ros2/Dockerfile
-    image: ${PROJECT_NAME:-px4ros2-jetson}-ros2:latest
+    image: ${PROJECT_NAME:-px4ros2-jetson-dds}-ros2:latest
     container_name: ros2
     privileged: true
     network_mode: host
@@ -29,7 +29,7 @@ services:
     build:
       context: .
       dockerfile: px4/Dockerfile
-    image: ${PROJECT_NAME:-px4ros2-jetson}-px4:latest
+    image: ${PROJECT_NAME:-px4ros2-jetson-dds}-px4:latest
     container_name: px4
     privileged: true
     network_mode: host
