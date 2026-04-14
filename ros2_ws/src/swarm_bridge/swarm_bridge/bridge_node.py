@@ -14,7 +14,7 @@ class SwarmBridge(Node):
 
     구독 (내부):
         /fmu/out/vehicle_local_position -> /swarm/drone_{id}/pose (10Hz)
-        /fmu/out/vehicle_status         -> /swarm/drone_{id}/status (1Hz)
+        /fmu/out/vehicle_status_v1         -> /swarm/drone_{id}/status (1Hz)
     """
 
     def __init__(self):
@@ -63,7 +63,7 @@ class SwarmBridge(Node):
         # 구독: PX4 기체 상태
         self.sub_vehicle_status = self.create_subscription(
             VehicleStatus,
-            '/fmu/out/vehicle_status',
+            '/fmu/out/vehicle_status_v1',
             self.vehicle_status_callback,
             BEST_EFFORT,
         )
