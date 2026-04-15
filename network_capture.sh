@@ -1,15 +1,15 @@
 #!/bin/bash
-# zenoh_capture.sh - Zenoh Network Analysis Tool
-# Real-time monitoring: bmon | Packet capture: tcpdump | Analysis: Wireshark
+# network_capture.sh - DDS + Zenoh Dual-Protocol Network Analysis Tool
+# Protocols: Fast-DDS/RTPS (rmw_fastrtps_cpp), uXRCE-DDS (MicroXRCEAgent), Zenoh router
+# Real-time monitoring: bmon | Packet capture: tcpdump | Analysis: tshark/Wireshark
 #
-# Usage: ./zenoh_capture.sh [COMMAND] [OPTIONS]
+# Usage: ./network_capture.sh [COMMAND] [OPTIONS]
 
 set -euo pipefail
 
 # ── Config ───────────────────────────────────────────────────────────────────
 CAPTURE_DIR="${CAPTURE_DIR:-$(dirname "$0")/captures}"
-ZENOH_FILTER="(udp port 7446) or (tcp port 7447) or (udp port 7447)"
-PID_FILE="/tmp/zenoh_capture.pid"
+PID_FILE="/tmp/network_capture.pid"
 
 # Zenoh port constants
 ZENOH_SCOUTING_PORT=7446
@@ -20,8 +20,36 @@ ZENOH_MCAST_GROUP="224.0.0.224"
 # Active Zenoh router config (matches ZENOH_ROUTER_CONFIG_URI in docker-compose.yml)
 ZENOH_ROUTER_CONFIG="${ZENOH_ROUTER_CONFIG_URI:-$(dirname "$0")/zenoh_config/router_config.json5}"
 
+# ── DDS / Fast-DDS (RTPS) constants ──────────────────────────────────────────
+# ROS_DOMAIN_ID default is 0; override via environment.
+ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+
+# Fast-DDS RTPS port formula (domain 0 defaults):
+#   Metatraffic multicast : 7400 + 250*domain
+#   Metatraffic unicast   : 7401 + 250*domain
+#   User data multicast   : 7410 + 250*domain
+#   User data unicast     : 7411 + 250*domain
+DDS_META_MCAST_PORT=$(( 7400 + 250 * ROS_DOMAIN_ID ))
+DDS_META_UCAST_PORT=$(( 7401 + 250 * ROS_DOMAIN_ID ))
+DDS_USER_MCAST_PORT=$(( 7410 + 250 * ROS_DOMAIN_ID ))
+DDS_USER_UCAST_PORT=$(( 7411 + 250 * ROS_DOMAIN_ID ))
+DDS_MCAST_GROUP="239.255.0.1"
+
+# ── uXRCE-DDS (MicroXRCEAgent) ───────────────────────────────────────────────
+# Load DRONE_ID from .env in the script's directory if not already set in env.
+_ENV_FILE="$(dirname "$0")/.env"
+if [ -z "${DRONE_ID:-}" ] && [ -f "$_ENV_FILE" ]; then
+    DRONE_ID=$(grep -E '^DRONE_ID=[0-9]+' "$_ENV_FILE" | head -1 | cut -d= -f2 | tr -d '[:space:]')
+fi
+DRONE_ID="${DRONE_ID:-1}"
+UXRCE_PORT=$(( 8888 + DRONE_ID ))
+
+# ── Capture scope & mode ─────────────────────────────────────────────────────
 # Default capture scope: external (inter-drone link), internal (lo), all (any)
 DEFAULT_SCOPE="${CAPTURE_SCOPE:-external}"
+# Default capture mode: dds (RTPS+uXRCE only), zenoh (Zenoh only), all (both)
+DEFAULT_MODE="${CAPTURE_MODE:-all}"
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -35,6 +63,61 @@ die()   { error "$*"; exit 1; }
 
 require_cmd() {
     command -v "$1" &>/dev/null || die "Command '$1' not found. Install: sudo apt install $1"
+}
+
+# Build a tcpdump BPF filter string based on capture mode.
+# Modes:
+#   dds    — Fast-DDS RTPS ports + uXRCE-DDS agent ports (all drones)
+#   zenoh  — Zenoh scouting + session ports
+#   all    — union of both (default)
+#
+# Fast-DDS unicast port allocation (RTPS spec §9.6.1.1):
+#   Metatraffic unicast per participant: 7400 + 250*domain + 1 + 2*participant_id
+#   User data unicast per participant:   7410 + 250*domain + 1 + 2*participant_id
+#
+#   Per-node participant IDs are assigned at runtime starting from 0.
+#   For this setup: 2 nodes × up to 5 drones = 10 participants → offset up to +20
+#   → Metatraffic unicast: 7401–7421, User data unicast: 7411–7431
+#   A portrange of 7400–7435 covers all cases with headroom.
+#
+# uXRCE-DDS: one MicroXRCEAgent per drone, port = 8888 + DRONE_ID (1–5) → 8889–8893
+build_bpf_filter() {
+    local mode="${1:-$DEFAULT_MODE}"
+    local with_rest="${2:-false}"
+
+    # Fast-DDS RTPS: portrange covering multicast bases + all participant unicast offsets
+    local dds_meta_range_lo=$(( DDS_META_MCAST_PORT ))           # 7400
+    local dds_user_range_hi=$(( DDS_USER_MCAST_PORT + 35 ))      # 7410 + 35 = 7445 (충분한 여유)
+    local dds_parts=(
+        "(udp portrange ${dds_meta_range_lo}-${dds_user_range_hi})"
+        "(udp portrange 8889-8893)"
+    )
+    local zenoh_parts=(
+        "(udp port ${ZENOH_SCOUTING_PORT})"
+        "(tcp port ${ZENOH_SESSION_PORT})"
+        "(udp port ${ZENOH_SESSION_PORT})"
+    )
+    local parts=()
+    case "$mode" in
+        dds)
+            parts=("${dds_parts[@]}")
+            ;;
+        zenoh)
+            parts=("${zenoh_parts[@]}")
+            [ "$with_rest" = "true" ] && parts+=("(tcp port ${ZENOH_REST_PORT})")
+            ;;
+        all|*)
+            parts=("${dds_parts[@]}" "${zenoh_parts[@]}")
+            [ "$with_rest" = "true" ] && parts+=("(tcp port ${ZENOH_REST_PORT})")
+            ;;
+    esac
+    # Join array elements with " or " (IFS only takes first char, so join manually)
+    local out="${parts[0]}"
+    local i
+    for (( i = 1; i < ${#parts[@]}; i++ )); do
+        out="${out} or ${parts[$i]}"
+    done
+    echo "$out"
 }
 
 # Parse external interface names from the active Zenoh router config.
@@ -107,11 +190,12 @@ resolve_scope_iface() {
 # Zenoh often runs locally (e.g. ROS 2 SITL), so we check where Zenoh
 # traffic actually exists rather than blindly skipping loopback.
 detect_iface() {
-    # 1) Probe: find the interface that carries Zenoh traffic right now
+    # 1) Probe: find an interface that carries known protocol traffic right now
     if command -v tcpdump &>/dev/null; then
-        local probe_iface
+        local probe_filter probe_iface
+        probe_filter="$(build_bpf_filter "all" "false")"
         probe_iface=$(sudo timeout 2 tcpdump -i any -nn -c 1 \
-            "port ${ZENOH_SESSION_PORT}" 2>/dev/null \
+            "$probe_filter" 2>/dev/null \
             | awk '{print $1}' | head -1)
         if [ -n "$probe_iface" ]; then
             echo "$probe_iface"
@@ -146,10 +230,11 @@ cmd_monitor() {
 # ── Command: capture ─────────────────────────────────────────────────────────
 cmd_capture() {
     local iface="${OPT_IFACE:-$(resolve_scope_iface "$OPT_SCOPE")}"
-    local base_filter="${OPT_FILTER:-$ZENOH_FILTER}"
-    local filter="$base_filter"
-    if [ "$OPT_WITH_REST" = "true" ] && [ -z "$OPT_FILTER" ]; then
-        filter="${base_filter} or (tcp port ${ZENOH_REST_PORT})"
+    local filter
+    if [ -n "$OPT_FILTER" ]; then
+        filter="$OPT_FILTER"
+    else
+        filter="$(build_bpf_filter "$OPT_MODE" "$OPT_WITH_REST")"
     fi
     local duration="${OPT_DURATION:-}"
     require_cmd tcpdump
@@ -157,7 +242,7 @@ cmd_capture() {
     mkdir -p "$CAPTURE_DIR"
     local timestamp
     timestamp=$(date +"%Y%m%d_%H%M%S")
-    local outfile="${CAPTURE_DIR}/zenoh_${OPT_SCOPE}_${iface}_${timestamp}.pcap"
+    local outfile="${CAPTURE_DIR}/capture_${OPT_MODE}_${OPT_SCOPE}_${iface}_${timestamp}.pcap"
 
     # warn if already running
     if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
@@ -166,15 +251,15 @@ cmd_capture() {
         exit 1
     fi
 
-    info "Starting Zenoh packet capture"
+    info "Starting packet capture (mode: ${CYAN}${OPT_MODE}${RESET})"
     echo -e "  Scope:      ${CYAN}${OPT_SCOPE}${RESET}"
     echo -e "  Interface:  ${CYAN}${iface}${RESET}"
     echo -e "  BPF filter: ${CYAN}${filter}${RESET}"
     echo -e "  Output:     ${CYAN}${outfile}${RESET}"
     [ -n "$duration" ] && echo -e "  Duration:   ${CYAN}${duration}s${RESET}"
     case "$OPT_SCOPE" in
-        external) echo -e "  ${YELLOW}Note:${RESET} access_control blocks fmu/**, rosout/**, tf/** on external interfaces — only swarm/** visible here." ;;
-        internal) echo -e "  ${YELLOW}Note:${RESET} loopback scope: includes internal topics (fmu/**, rosout/**) and client<->router sessions." ;;
+        external) echo -e "  ${YELLOW}Note:${RESET} Zenoh access_control blocks fmu/**, rosout/**, tf/** on external interfaces — only swarm/** visible here." ;;
+        internal) echo -e "  ${YELLOW}Note:${RESET} loopback: DDS unicast sessions, fmu/**, uXRCE-DDS agent, and Zenoh client<->router sessions." ;;
         all)      echo -e "  ${YELLOW}Note:${RESET} scope=all (-i any): captures all interfaces including loopback; packets may appear duplicated." ;;
     esac
     echo ""
@@ -251,6 +336,10 @@ cmd_summary() {
     [ -f "$pcap_file" ] || die "File not found: $pcap_file"
     require_cmd tcpdump
 
+    # Build BPF filter based on current mode
+    local SUMMARY_FILTER
+    SUMMARY_FILTER="$(build_bpf_filter "${OPT_MODE:-all}" "$OPT_WITH_REST")"
+
     echo -e "${BOLD}Capture file summary: $(basename "$pcap_file")${RESET}"
     echo ""
 
@@ -262,7 +351,7 @@ cmd_summary() {
         tcpdump -r "$pcap_file" -q 2>/dev/null | tail -3
     fi
     # min / max packets per second (appended to overall stats)
-    tcpdump -r "$pcap_file" -nn -tt "$ZENOH_FILTER" 2>/dev/null \
+    tcpdump -r "$pcap_file" -nn -tt "$SUMMARY_FILTER" 2>/dev/null \
         | awk '{
             ts = int($1)
             pps[ts]++
@@ -284,7 +373,7 @@ cmd_summary() {
     # ---- Packet Size Statistics ----
     echo ""
     echo -e "${CYAN}-- Packet Size Statistics -----------------${RESET}"
-    tcpdump -r "$pcap_file" -nn "$ZENOH_FILTER" 2>/dev/null \
+    tcpdump -r "$pcap_file" -nn "$SUMMARY_FILTER" 2>/dev/null \
         | awk '{
             # extract "length <N>" at end of line
             for (i = 1; i <= NF; i++) {
@@ -305,25 +394,31 @@ cmd_summary() {
                 printf "  Max size:      %d bytes\n", max
                 printf "  Avg size:      %d bytes\n", total / count
             } else {
-                print "  No Zenoh packets found."
+                print "  No matching packets found."
             }
           }'
 
-    # ---- Packets by Zenoh Service (port categories) ----
+    # ---- Packets by Service (port categories) ----
     echo ""
-    echo -e "${CYAN}-- Packets by Zenoh Service ---------------${RESET}"
+    echo -e "${CYAN}-- Packets by Service ---------------------${RESET}"
     echo -e "  ${BOLD}By service:${RESET}"
-    for label_port in "Scouting (UDP ${ZENOH_SCOUTING_PORT}):${ZENOH_SCOUTING_PORT}" \
-                      "Session (TCP/UDP ${ZENOH_SESSION_PORT}):${ZENOH_SESSION_PORT}"; do
+    for label_port in \
+        "Zenoh Scouting (UDP ${ZENOH_SCOUTING_PORT}):${ZENOH_SCOUTING_PORT}" \
+        "Zenoh Session (TCP/UDP ${ZENOH_SESSION_PORT}):${ZENOH_SESSION_PORT}" \
+        "DDS Meta Mcast (UDP ${DDS_META_MCAST_PORT}):${DDS_META_MCAST_PORT}" \
+        "DDS Meta Ucast (UDP ${DDS_META_UCAST_PORT}):${DDS_META_UCAST_PORT}" \
+        "DDS User Mcast (UDP ${DDS_USER_MCAST_PORT}):${DDS_USER_MCAST_PORT}" \
+        "DDS User Ucast (UDP ${DDS_USER_UCAST_PORT}):${DDS_USER_UCAST_PORT}" \
+        "uXRCE-DDS Agent (UDP ${UXRCE_PORT}):${UXRCE_PORT}"; do
         local label="${label_port%%:*}"
         local p="${label_port##*:}"
         local count
         count=$(tcpdump -r "$pcap_file" -nn "port $p" 2>/dev/null | wc -l)
-        printf "    %-30s %d packets\n" "$label" "$count"
+        printf "    %-36s %d packets\n" "$label" "$count"
     done
     echo ""
     echo -e "  ${BOLD}By destination port (top 20):${RESET}"
-    tcpdump -r "$pcap_file" -nn "$ZENOH_FILTER" 2>/dev/null \
+    tcpdump -r "$pcap_file" -nn "$SUMMARY_FILTER" 2>/dev/null \
         | awk '{
             for (i = 1; i <= NF; i++) {
                 if ($i == ">") {
@@ -343,7 +438,7 @@ cmd_summary() {
     # ---- Traffic Graph (packets per second) ----
     echo ""
     echo -e "${CYAN}-- Traffic Graph (packets/sec) ------------${RESET}"
-    tcpdump -r "$pcap_file" -nn -tt "$ZENOH_FILTER" 2>/dev/null \
+    tcpdump -r "$pcap_file" -nn -tt "$SUMMARY_FILTER" 2>/dev/null \
         | awk '{
             ts = int($1)
             pps[ts]++
@@ -351,11 +446,11 @@ cmd_summary() {
             last = ts
           }
           END {
-            if (NR == 0) { print "  No Zenoh packets found."; exit }
+            if (NR == 0) { print "  No matching packets found."; exit }
             # find max for scaling
             max = 0
             for (t in pps) if (pps[t] > max) max = pps[t]
-            if (max == 0) { print "  No Zenoh packets found."; exit }
+            if (max == 0) { print "  No matching packets found."; exit }
 
             width = 50
             # print each second
@@ -383,12 +478,19 @@ cmd_detail() {
     [ -f "$pcap_file" ] || die "File not found: $pcap_file"
     require_cmd tshark
 
-    local ZENOH_DISPLAY_FILTER="tcp.port == ${ZENOH_SESSION_PORT} || udp.port == ${ZENOH_SESSION_PORT} || udp.port == ${ZENOH_SCOUTING_PORT}"
-    if [ "$OPT_WITH_REST" = "true" ]; then
-        ZENOH_DISPLAY_FILTER="${ZENOH_DISPLAY_FILTER} || tcp.port == ${ZENOH_REST_PORT}"
-    fi
+    # Build tshark display filters (Wireshark syntax, not BPF)
+    local DDS_TSHARK_FILTER="udp.port == ${DDS_META_MCAST_PORT} || udp.port == ${DDS_META_UCAST_PORT} || udp.port == ${DDS_USER_MCAST_PORT} || udp.port == ${DDS_USER_UCAST_PORT} || udp.port == ${UXRCE_PORT}"
+    local ZENOH_TSHARK_FILTER="tcp.port == ${ZENOH_SESSION_PORT} || udp.port == ${ZENOH_SESSION_PORT} || udp.port == ${ZENOH_SCOUTING_PORT}"
+    [ "$OPT_WITH_REST" = "true" ] && ZENOH_TSHARK_FILTER="${ZENOH_TSHARK_FILTER} || tcp.port == ${ZENOH_REST_PORT}"
+    local DISPLAY_FILTER
+    case "$OPT_MODE" in
+        dds)   DISPLAY_FILTER="$DDS_TSHARK_FILTER" ;;
+        zenoh) DISPLAY_FILTER="$ZENOH_TSHARK_FILTER" ;;
+        all|*) DISPLAY_FILTER="${DDS_TSHARK_FILTER} || ${ZENOH_TSHARK_FILTER}" ;;
+    esac
 
-    echo -e "${BOLD}Zenoh Detail Analysis: $(basename "$pcap_file")${RESET}"
+    echo -e "${BOLD}DDS + Zenoh Detail Analysis: $(basename "$pcap_file")${RESET}"
+    echo -e "  Mode: ${CYAN}${OPT_MODE}${RESET}"
 
     # tshark may return non-zero on some operations; don't let set -e kill us
     set +e
@@ -401,7 +503,7 @@ cmd_detail() {
     [ "$io_interval" -lt 1 ] && io_interval=1
     echo ""
     echo -e "${CYAN}-- I/O Statistics (${io_interval}s intervals) --------${RESET}"
-    tshark -r "$pcap_file" -q -z "io,stat,${io_interval},$ZENOH_DISPLAY_FILTER" 2>/dev/null
+    tshark -r "$pcap_file" -q -z "io,stat,${io_interval},$DISPLAY_FILTER" 2>/dev/null
 
     # 2) Zenoh protocol dissection
     echo ""
@@ -424,12 +526,44 @@ cmd_detail() {
         echo "  No Zenoh dissected packets. (tshark may lack Zenoh dissector plugin)"
         echo "  Showing raw Zenoh port traffic instead:"
         echo ""
-        tshark -r "$pcap_file" -Y "$ZENOH_DISPLAY_FILTER" -c 10 2>/dev/null | sed 's/^/    /'
+        tshark -r "$pcap_file" -Y "$ZENOH_TSHARK_FILTER" -c 10 2>/dev/null | sed 's/^/    /'
+    fi
+
+    # 2b) DDS/RTPS protocol dissection
+    echo ""
+    echo -e "${CYAN}-- DDS/RTPS Protocol Traffic (Fast-DDS) ---------${RESET}"
+    local rtps_count
+    rtps_count=$(tshark -r "$pcap_file" -Y rtps -T fields -e frame.number 2>/dev/null | wc -l)
+    if [ "$rtps_count" -gt 0 ]; then
+        echo "  RTPS dissected packets: $rtps_count"
+        echo ""
+        echo -e "  ${BOLD}RTPS submessage types (top 20):${RESET}"
+        tshark -r "$pcap_file" -Y rtps \
+            -T fields -e rtps.sm.id 2>/dev/null \
+            | sort | uniq -c | sort -rn | head -20 \
+            | awk '{ printf "    %6d  submessage_id=0x%s\n", $1, $2 }'
+        echo ""
+        echo -e "  ${BOLD}RTPS GUID prefixes / participants (top 10):${RESET}"
+        tshark -r "$pcap_file" -Y rtps \
+            -T fields -e rtps.guidPrefix 2>/dev/null \
+            | sort | uniq -c | sort -rn | head -10 \
+            | awk '{ printf "    %6d  %s\n", $1, $2 }'
+        echo ""
+        echo -e "  ${BOLD}uXRCE-DDS agent traffic (UDP port ${UXRCE_PORT}, DRONE_ID=${DRONE_ID}):${RESET}"
+        local uxrce_count
+        uxrce_count=$(tshark -r "$pcap_file" -Y "udp.port == ${UXRCE_PORT}" \
+            -T fields -e frame.number 2>/dev/null | wc -l)
+        echo "    $uxrce_count packets on port ${UXRCE_PORT} (PX4 <-> MicroXRCEAgent)"
+    else
+        echo "  No RTPS dissected packets. (RTPS dissector is built into Wireshark >= 2.x)"
+        echo "  Showing raw DDS port traffic:"
+        echo ""
+        tshark -r "$pcap_file" -Y "$DDS_TSHARK_FILTER" -c 10 2>/dev/null | sed 's/^/    /'
     fi
 
     # 3) Scouting traffic analysis
     echo ""
-    echo -e "${CYAN}-- Scouting Traffic (UDP ${ZENOH_SCOUTING_PORT}) -----------${RESET}"
+    echo -e "${CYAN}-- Zenoh Scouting Traffic (UDP ${ZENOH_SCOUTING_PORT}) -----------${RESET}"
     local scout_count
     scout_count=$(tshark -r "$pcap_file" \
         -Y "udp.port == ${ZENOH_SCOUTING_PORT}" \
@@ -477,22 +611,30 @@ cmd_detail() {
             -Y "ip.dst == ${ZENOH_MCAST_GROUP} && udp.port == ${ZENOH_SCOUTING_PORT}" \
             -T fields -e frame.number 2>/dev/null | wc -l)
         echo "    $zenoh_mcast packets"
+        echo ""
+        echo -e "  ${BOLD}Fast-DDS discovery multicast (${DDS_MCAST_GROUP}:${DDS_META_MCAST_PORT}):${RESET}"
+        local dds_mcast
+        dds_mcast=$(tshark -r "$pcap_file" \
+            -Y "ip.dst == ${DDS_MCAST_GROUP} && udp.port == ${DDS_META_MCAST_PORT}" \
+            -T fields -e frame.number 2>/dev/null | wc -l)
+        echo "    $dds_mcast packets"
     fi
 
-    # 7) Port conversations - TCP and UDP separately (Zenoh uses both)
+    # 7) Port conversations - TCP and UDP separately
     echo ""
-    echo -e "${CYAN}-- TCP Conversations (Zenoh) -------------${RESET}"
+    echo -e "${CYAN}-- TCP Conversations -----------------------${RESET}"
     local tcp_conv_filter="tcp.port == ${ZENOH_SESSION_PORT}"
     [ "$OPT_WITH_REST" = "true" ] && tcp_conv_filter="${tcp_conv_filter} || tcp.port == ${ZENOH_REST_PORT}"
     tshark -r "$pcap_file" -q -z "conv,tcp,${tcp_conv_filter}" 2>/dev/null
     echo ""
-    echo -e "${CYAN}-- UDP Conversations (Zenoh) -------------${RESET}"
-    tshark -r "$pcap_file" -q -z "conv,udp,udp.port == ${ZENOH_SCOUTING_PORT} || udp.port == ${ZENOH_SESSION_PORT}" 2>/dev/null
+    echo -e "${CYAN}-- UDP Conversations -----------------------${RESET}"
+    local udp_conv_filter="udp.port == ${ZENOH_SCOUTING_PORT} || udp.port == ${ZENOH_SESSION_PORT} || udp.port == ${DDS_META_MCAST_PORT} || udp.port == ${DDS_META_UCAST_PORT} || udp.port == ${DDS_USER_MCAST_PORT} || udp.port == ${DDS_USER_UCAST_PORT} || udp.port == ${UXRCE_PORT}"
+    tshark -r "$pcap_file" -q -z "conv,udp,${udp_conv_filter}" 2>/dev/null
 
     # 8) Packet size distribution
     echo ""
     echo -e "${CYAN}-- Packet Size Distribution --------------${RESET}"
-    tshark -r "$pcap_file" -Y "$ZENOH_DISPLAY_FILTER" \
+    tshark -r "$pcap_file" -Y "$DISPLAY_FILTER" \
         -T fields -e frame.len 2>/dev/null \
         | awk 'BEGIN { b[0]="0-99"; b[1]="100-299"; b[2]="300-499"; b[3]="500-999"; b[4]="1000+" }
           {
@@ -518,7 +660,7 @@ cmd_detail() {
     # 9) Packet rate analysis
     echo ""
     echo -e "${CYAN}-- Packet Rate Analysis ------------------${RESET}"
-    tshark -r "$pcap_file" -Y "$ZENOH_DISPLAY_FILTER" \
+    tshark -r "$pcap_file" -Y "$DISPLAY_FILTER" \
         -T fields -e frame.time_epoch 2>/dev/null \
         | awk '{
             ts = int($1)
@@ -590,7 +732,7 @@ cmd_detail() {
 
 # ── Command: status ──────────────────────────────────────────────────────────
 cmd_status() {
-    echo -e "${BOLD}Zenoh Capture Status${RESET}"
+    echo -e "${BOLD}DDS + Zenoh Network Capture Status${RESET}"
     echo ""
 
     # background capture status
@@ -611,13 +753,22 @@ cmd_status() {
         fi
     done
 
-    # Zenoh dissector check
+    # Protocol dissector availability
     echo ""
-    echo -e "${BOLD}Zenoh Wireshark dissector:${RESET}"
-    if command -v tshark &>/dev/null && tshark -G protocols 2>/dev/null | grep -q zenoh; then
-        echo -e "  ${GREEN}+${RESET} zenoh dissector available"
+    echo -e "${BOLD}Wireshark/tshark protocol dissectors:${RESET}"
+    if command -v tshark &>/dev/null; then
+        if tshark -G protocols 2>/dev/null | grep -q '^zenoh'; then
+            echo -e "  ${GREEN}+${RESET} zenoh dissector available (Zenoh key-expression decoding enabled)"
+        else
+            echo -e "  ${YELLOW}!${RESET} zenoh dissector not found (install for Zenoh key-expression analysis)"
+        fi
+        if tshark -G protocols 2>/dev/null | grep -qi '^rtps'; then
+            echo -e "  ${GREEN}+${RESET} RTPS dissector available (Fast-DDS/DDS protocol decoding enabled)"
+        else
+            echo -e "  ${YELLOW}!${RESET} RTPS dissector not found (built into Wireshark >= 2.x; check tshark version)"
+        fi
     else
-        echo -e "  ${YELLOW}!${RESET} zenoh dissector not found (install for deeper analysis)"
+        echo -e "  ${RED}x${RESET} tshark not installed — no protocol dissection possible"
     fi
 
     # detected interfaces
@@ -631,14 +782,31 @@ cmd_status() {
         echo -e "  ${name}${CYAN}${wireless}${RESET}  (${state})"
     done
 
-    # ROS2/Zenoh environment (swarm-specific)
+    # DDS / ROS2 environment
     echo ""
-    echo -e "${BOLD}ROS2 / Zenoh environment:${RESET}"
-    echo -e "  DRONE_ID: ${CYAN}${DRONE_ID:-unset}${RESET}"
+    echo -e "${BOLD}DDS / ROS2 environment:${RESET}"
+    echo -e "  RMW_IMPLEMENTATION:  ${CYAN}${RMW_IMPLEMENTATION}${RESET}"
+    echo -e "  ROS_DOMAIN_ID:       ${CYAN}${ROS_DOMAIN_ID}${RESET}"
+    echo -e "  DRONE_ID:            ${CYAN}${DRONE_ID}${RESET}  (from ${_ENV_FILE})"
+    echo -e "  uXRCE-DDS port:      ${CYAN}${UXRCE_PORT}${RESET}  (= 8888 + DRONE_ID)"
+    echo ""
+    echo -e "${BOLD}Captured port ranges (ROS_DOMAIN_ID=${ROS_DOMAIN_ID}):${RESET}"
+    echo -e "  Fast-DDS RTPS:      UDP ${DDS_META_MCAST_PORT}-$(( DDS_USER_MCAST_PORT + 35 ))  (multicast ${DDS_MCAST_GROUP}:${DDS_META_MCAST_PORT} + per-participant unicast)"
+    echo -e "    ├─ metatraffic multicast: ${DDS_META_MCAST_PORT}"
+    echo -e "    ├─ metatraffic unicast:   ${DDS_META_UCAST_PORT}, $(( DDS_META_UCAST_PORT + 2 )), $(( DDS_META_UCAST_PORT + 4 )), ... (per participant)"
+    echo -e "    ├─ user-data multicast:   ${DDS_USER_MCAST_PORT}"
+    echo -e "    └─ user-data unicast:     ${DDS_USER_UCAST_PORT}, $(( DDS_USER_UCAST_PORT + 2 )), $(( DDS_USER_UCAST_PORT + 4 )), ... (per participant)"
+    echo -e "  MicroXRCEAgent:     UDP 8889-8893  (one per drone; DRONE_ID=${DRONE_ID} → ${UXRCE_PORT})"
+    echo -e "  Zenoh scouting:     UDP ${ZENOH_SCOUTING_PORT}  (${ZENOH_MCAST_GROUP}:${ZENOH_SCOUTING_PORT})"
+    echo -e "  Zenoh session:      TCP/UDP ${ZENOH_SESSION_PORT}"
+
+    # Zenoh router config
+    echo ""
+    echo -e "${BOLD}Zenoh router config:${RESET}"
     if [ -f "$ZENOH_ROUTER_CONFIG" ]; then
-        echo -e "  Router config: ${CYAN}${ZENOH_ROUTER_CONFIG}${RESET} ${GREEN}[found]${RESET}"
+        echo -e "  ${ZENOH_ROUTER_CONFIG}  ${GREEN}[found]${RESET}"
     else
-        echo -e "  Router config: ${CYAN}${ZENOH_ROUTER_CONFIG}${RESET} ${YELLOW}[missing]${RESET}"
+        echo -e "  ${ZENOH_ROUTER_CONFIG}  ${YELLOW}[missing]${RESET}"
     fi
 
     local ext_ifaces
@@ -656,14 +824,15 @@ cmd_status() {
     fi
 
     if command -v docker &>/dev/null; then
-        echo -e "  Containers:"
+        echo ""
+        echo -e "${BOLD}Containers:${RESET}"
         for c in ros2 px4; do
             local cstate
             cstate=$(docker ps --filter "name=^${c}$" --format '{{.Status}}' 2>/dev/null)
             if [ -n "$cstate" ]; then
-                echo -e "    ${GREEN}+${RESET} ${c}: ${cstate}"
+                echo -e "  ${GREEN}+${RESET} ${c}: ${cstate}"
             else
-                echo -e "    ${RED}x${RESET} ${c}: not running"
+                echo -e "  ${RED}x${RESET} ${c}: not running"
             fi
         done
     fi
@@ -671,69 +840,97 @@ cmd_status() {
 
 # ── Usage ────────────────────────────────────────────────────────────────────
 usage() {
-    echo -e "${BOLD}zenoh_capture.sh${RESET} - Zenoh Network Analysis Tool
+    echo -e "${BOLD}network_capture.sh${RESET} - DDS + Zenoh Dual-Protocol Network Analysis Tool
 
 ${BOLD}Usage:${RESET}
   $0 <command> [options]
 
 ${BOLD}Commands:${RESET}
   ${CYAN}monitor${RESET}              Real-time bandwidth monitoring (bmon)
-  ${CYAN}capture${RESET}              Start Zenoh packet capture (tcpdump, Ctrl+C to stop)
+  ${CYAN}capture${RESET}              Start packet capture (tcpdump, Ctrl+C to stop)
   ${CYAN}capture --bg${RESET}         Start capture in background
   ${CYAN}stop${RESET}                 Stop background capture
   ${CYAN}list${RESET}                 List saved capture files
   ${CYAN}summary <file.pcap>${RESET}  Text summary of capture file
-  ${CYAN}detail <file.pcap>${RESET}   Deep Zenoh protocol analysis with tshark
-  ${CYAN}status${RESET}               Show capture status and tool availability
+  ${CYAN}detail <file.pcap>${RESET}   Deep DDS + Zenoh protocol analysis with tshark
+  ${CYAN}status${RESET}               Show capture status, environment, and tool availability
 
 ${BOLD}Options:${RESET}
   -i <interface>           Interface to monitor (overrides --scope)
   --scope <name>           Capture scope: external|internal|all (default: ${DEFAULT_SCOPE})
+  --mode <mode>            Protocol filter mode: dds|zenoh|all (default: ${DEFAULT_MODE})
+                             dds:   Fast-DDS/RTPS ports + uXRCE-DDS only
+                             zenoh: Zenoh scouting + session only
+                             all:   Both DDS and Zenoh (recommended)
   --with-rest              Include Zenoh REST API port ${ZENOH_REST_PORT} in filter
+                           (only meaningful with --mode zenoh or all)
   --config <path>          Zenoh router config path (default: \$ZENOH_ROUTER_CONFIG_URI
                            or ./zenoh_config/router_config.json5)
-  --filter <BPF>           Custom tcpdump BPF filter (default: \"${ZENOH_FILTER}\")
+  --filter <BPF>           Custom tcpdump BPF filter (overrides --mode)
   --duration <seconds>     Capture time limit (default: unlimited)
   --dir <directory>        Capture file output directory (default: ./captures/)
   --bg                     Run capture in background
 
 ${BOLD}Scopes:${RESET}
   ${CYAN}external${RESET}  Inter-drone link (wlP1p1s0/eno1, parsed from router_config.json5).
-            Due to access_control rules, only ${BOLD}swarm/**${RESET} topics are visible here —
-            ${BOLD}fmu/**${RESET}, ${BOLD}rosout/**${RESET}, ${BOLD}tf/**${RESET} are blocked on external ifaces.
-  ${CYAN}internal${RESET}  Loopback (lo). Includes ${BOLD}fmu/**${RESET}, ${BOLD}rosout/**${RESET}, and
-            client<->router Zenoh sessions inside the host.
+            Zenoh access_control blocks ${BOLD}fmu/**${RESET}, ${BOLD}rosout/**${RESET}, ${BOLD}tf/**${RESET} here — only ${BOLD}swarm/**${RESET} visible.
+  ${CYAN}internal${RESET}  Loopback (lo). Includes DDS unicast sessions, ${BOLD}fmu/**${RESET}, uXRCE-DDS agent,
+            and Zenoh client<->router sessions inside the host.
   ${CYAN}all${RESET}       ${BOLD}-i any${RESET}: captures every interface including lo. Packets on
             multiple ifaces may appear duplicated.
 
 ${BOLD}Examples:${RESET}
-  $0 status                                   # show env, containers, external ifaces
-  $0 monitor                                  # external scope, auto interface
-  $0 capture                                  # default: scope=external
-  $0 capture --scope internal --duration 30   # loopback (fmu/**, rosout/**, sessions)
-  $0 capture --scope all --duration 30        # every interface
-  $0 capture -i wlP1p1s0 --duration 60        # explicit iface (overrides scope)
+  $0 status                                        # show env, ports, containers, external ifaces
+  $0 monitor                                       # external scope, auto interface
+  $0 capture                                       # default: mode=all, scope=external
+  $0 capture --mode dds                            # DDS + uXRCE only
+  $0 capture --mode zenoh                          # Zenoh only
+  $0 capture --mode all --scope internal           # everything on loopback
+  $0 capture --scope internal --duration 30        # loopback: DDS unicast, fmu/**, sessions
+  $0 capture --scope all --duration 30             # every interface
+  $0 capture -i wlP1p1s0 --duration 60             # explicit iface (overrides scope)
   $0 capture -i eno1 --bg
   $0 stop
   $0 list
-  $0 summary captures/zenoh_external_wlP1p1s0_20260304_120000.pcap
-  $0 detail  captures/zenoh_internal_lo_20260304_120000.pcap
+  $0 summary captures/capture_all_external_wlP1p1s0_20260304_120000.pcap
+  $0 detail  captures/capture_dds_internal_lo_20260304_120000.pcap --mode dds
 
-${BOLD}Zenoh ports:${RESET}
-  ${ZENOH_SCOUTING_PORT}   UDP scouting/discovery (multicast ${ZENOH_MCAST_GROUP})
-  ${ZENOH_SESSION_PORT}   TCP/UDP session traffic
-  ${ZENOH_REST_PORT}   TCP REST API (optional, enable with --with-rest)
+${BOLD}Port reference (this host: DRONE_ID=${DRONE_ID}, ROS_DOMAIN_ID=${ROS_DOMAIN_ID}):${RESET}
+  Fast-DDS RTPS (captured range: UDP ${DDS_META_MCAST_PORT}-$(( DDS_USER_MCAST_PORT + 35 ))):
+    ${DDS_META_MCAST_PORT}                 UDP metatraffic multicast   (${DDS_MCAST_GROUP}:${DDS_META_MCAST_PORT})
+    ${DDS_META_UCAST_PORT}, $(( DDS_META_UCAST_PORT + 2 )), $(( DDS_META_UCAST_PORT + 4 ))...   UDP metatraffic unicast per participant (+2 per node)
+    ${DDS_USER_MCAST_PORT}                 UDP user-data multicast
+    ${DDS_USER_UCAST_PORT}, $(( DDS_USER_UCAST_PORT + 2 )), $(( DDS_USER_UCAST_PORT + 4 ))...   UDP user-data unicast per participant (+2 per node)
+  uXRCE-DDS MicroXRCEAgent (captured range: UDP 8889-8893):
+    Port = 8888 + DRONE_ID, one per drone (drones 1-5 → ports 8889-8893)
+    This host (DRONE_ID=${DRONE_ID}) uses UDP ${UXRCE_PORT}
+  Zenoh router:
+    ${ZENOH_SCOUTING_PORT}        UDP scouting/discovery      (multicast ${ZENOH_MCAST_GROUP})
+    ${ZENOH_SESSION_PORT}        TCP/UDP session traffic
+    ${ZENOH_REST_PORT}        TCP REST API                (optional, --with-rest)
 
-${BOLD}Swarm topics (published by swarm_bridge):${RESET}
-  /swarm/drone_\${DRONE_ID}/pose     10 Hz  (from /fmu/out/vehicle_local_position)
-  /swarm/drone_\${DRONE_ID}/status   1 Hz   (from /fmu/out/vehicle_status)
+${BOLD}Topic architecture:${RESET}
+  PX4 -> MicroXRCEAgent (UDP ${UXRCE_PORT} for DRONE_ID=${DRONE_ID}) -> ROS2 Fast-DDS:
+    /px4_${DRONE_ID}/fmu/out/vehicle_local_position_v1   (RTPS, internal only)
+    /px4_${DRONE_ID}/fmu/out/vehicle_status_v1           (RTPS, internal only)
+  swarm_bridge publishes to Zenoh (external-visible):
+    /swarm/drone_${DRONE_ID}/pose     10 Hz  (NED->ENU converted)
+    /swarm/drone_${DRONE_ID}/status   1 Hz   (JSON: arm/nav/failsafe state)
 
 ${BOLD}Wireshark display filter examples:${RESET}
-  zenoh                                       Zenoh protocol (requires dissector)
-  tcp.port == 7447 || udp.port == 7447        Session traffic
-  udp.port == 7446                            Scouting/discovery
-  ip.dst == 224.0.0.224                       Scouting multicast
-  zenoh.keyexpr contains \"swarm/drone_\"       Swarm bridge traffic (dissector)
+  Zenoh:
+    zenoh                                                  Zenoh protocol (requires dissector plugin)
+    tcp.port == ${ZENOH_SESSION_PORT} || udp.port == ${ZENOH_SESSION_PORT}               Zenoh session traffic
+    udp.port == ${ZENOH_SCOUTING_PORT}                                      Zenoh scouting
+    ip.dst == ${ZENOH_MCAST_GROUP}                                  Zenoh scouting multicast
+    zenoh.keyexpr contains \"swarm/drone_\"                  Swarm bridge topics (needs dissector)
+  DDS/RTPS (Fast-DDS):
+    rtps                                                   All RTPS traffic (built-in dissector)
+    ip.dst == ${DDS_MCAST_GROUP}                                Fast-DDS discovery multicast
+    udp.port >= ${DDS_META_MCAST_PORT} && udp.port <= $(( DDS_USER_MCAST_PORT + 35 ))             All Fast-DDS RTPS ports (multicast + unicast)
+    udp.port >= 8889 && udp.port <= 8893                   uXRCE-DDS agents (all drones)
+    udp.port == ${UXRCE_PORT}                                      uXRCE-DDS agent for this drone only
+    rtps && ip.src == <PX4-IP>                             PX4 RTPS traffic only
 "
 }
 
@@ -743,6 +940,7 @@ OPT_FILTER=""
 OPT_DURATION=""
 OPT_BG="false"
 OPT_SCOPE="$DEFAULT_SCOPE"
+OPT_MODE="$DEFAULT_MODE"
 OPT_WITH_REST="false"
 COMMAND=""
 POSITIONAL=()
@@ -763,6 +961,13 @@ while [[ $# -gt 0 ]]; do
             OPT_BG="true"; shift ;;
         --scope)
             OPT_SCOPE="$2"; shift 2 ;;
+        --mode)
+            OPT_MODE="$2"
+            case "$OPT_MODE" in
+                dds|zenoh|all) ;;
+                *) die "Invalid --mode: '$OPT_MODE'. Expected: dds|zenoh|all" ;;
+            esac
+            shift 2 ;;
         --with-rest)
             OPT_WITH_REST="true"; shift ;;
         --config)
