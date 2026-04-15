@@ -10,7 +10,7 @@ services:
     ipc: host
     runtime: nvidia
     environment:
-      ZENOH_ROUTER_CONFIG_URI: /root/zenoh_config/router_config_multicast_only.json5
+      ZENOH_ROUTER_CONFIG_URI: /root/zenoh_config/router_config.json5
       RMW_IMPLEMENTATION: rmw_zenoh_cpp
       DRONE_ID: ${DRONE_ID:-1}
     volumes:
