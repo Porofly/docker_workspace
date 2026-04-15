@@ -111,8 +111,13 @@ build_bpf_filter() {
             [ "$with_rest" = "true" ] && parts+=("(tcp port ${ZENOH_REST_PORT})")
             ;;
     esac
-    local IFS=' or '
-    echo "${parts[*]}"
+    # Join array elements with " or " (IFS only takes first char, so join manually)
+    local out="${parts[0]}"
+    local i
+    for (( i = 1; i < ${#parts[@]}; i++ )); do
+        out="${out} or ${parts[$i]}"
+    done
+    echo "$out"
 }
 
 # Parse external interface names from the active Zenoh router config.
@@ -785,14 +790,15 @@ cmd_status() {
     echo -e "  DRONE_ID:            ${CYAN}${DRONE_ID}${RESET}  (from ${_ENV_FILE})"
     echo -e "  uXRCE-DDS port:      ${CYAN}${UXRCE_PORT}${RESET}  (= 8888 + DRONE_ID)"
     echo ""
-    echo -e "${BOLD}Computed port assignments (ROS_DOMAIN_ID=${ROS_DOMAIN_ID}):${RESET}"
-    echo -e "  Fast-DDS metatraffic multicast: UDP ${DDS_META_MCAST_PORT}  (${DDS_MCAST_GROUP}:${DDS_META_MCAST_PORT})"
-    echo -e "  Fast-DDS metatraffic unicast:   UDP ${DDS_META_UCAST_PORT}"
-    echo -e "  Fast-DDS user-data multicast:   UDP ${DDS_USER_MCAST_PORT}"
-    echo -e "  Fast-DDS user-data unicast:     UDP ${DDS_USER_UCAST_PORT}"
-    echo -e "  MicroXRCEAgent (uXRCE-DDS):     UDP ${UXRCE_PORT}"
-    echo -e "  Zenoh scouting:                 UDP ${ZENOH_SCOUTING_PORT}  (${ZENOH_MCAST_GROUP}:${ZENOH_SCOUTING_PORT})"
-    echo -e "  Zenoh session:                  TCP/UDP ${ZENOH_SESSION_PORT}"
+    echo -e "${BOLD}Captured port ranges (ROS_DOMAIN_ID=${ROS_DOMAIN_ID}):${RESET}"
+    echo -e "  Fast-DDS RTPS:      UDP ${DDS_META_MCAST_PORT}-$(( DDS_USER_MCAST_PORT + 35 ))  (multicast ${DDS_MCAST_GROUP}:${DDS_META_MCAST_PORT} + per-participant unicast)"
+    echo -e "    ├─ metatraffic multicast: ${DDS_META_MCAST_PORT}"
+    echo -e "    ├─ metatraffic unicast:   ${DDS_META_UCAST_PORT}, $(( DDS_META_UCAST_PORT + 2 )), $(( DDS_META_UCAST_PORT + 4 )), ... (per participant)"
+    echo -e "    ├─ user-data multicast:   ${DDS_USER_MCAST_PORT}"
+    echo -e "    └─ user-data unicast:     ${DDS_USER_UCAST_PORT}, $(( DDS_USER_UCAST_PORT + 2 )), $(( DDS_USER_UCAST_PORT + 4 )), ... (per participant)"
+    echo -e "  MicroXRCEAgent:     UDP 8889-8893  (one per drone; DRONE_ID=${DRONE_ID} → ${UXRCE_PORT})"
+    echo -e "  Zenoh scouting:     UDP ${ZENOH_SCOUTING_PORT}  (${ZENOH_MCAST_GROUP}:${ZENOH_SCOUTING_PORT})"
+    echo -e "  Zenoh session:      TCP/UDP ${ZENOH_SESSION_PORT}"
 
     # Zenoh router config
     echo ""
@@ -889,21 +895,22 @@ ${BOLD}Examples:${RESET}
   $0 summary captures/capture_all_external_wlP1p1s0_20260304_120000.pcap
   $0 detail  captures/capture_dds_internal_lo_20260304_120000.pcap --mode dds
 
-${BOLD}Port reference (DRONE_ID=${DRONE_ID}, ROS_DOMAIN_ID=${ROS_DOMAIN_ID}):${RESET}
-  Fast-DDS RTPS:
-    ${DDS_META_MCAST_PORT}   UDP metatraffic multicast   (${DDS_MCAST_GROUP}:${DDS_META_MCAST_PORT})
-    ${DDS_META_UCAST_PORT}   UDP metatraffic unicast
-    ${DDS_USER_MCAST_PORT}   UDP user-data multicast
-    ${DDS_USER_UCAST_PORT}   UDP user-data unicast
-  uXRCE-DDS (MicroXRCEAgent):
-    ${UXRCE_PORT}   UDP agent port  (= 8888 + DRONE_ID)
+${BOLD}Port reference (this host: DRONE_ID=${DRONE_ID}, ROS_DOMAIN_ID=${ROS_DOMAIN_ID}):${RESET}
+  Fast-DDS RTPS (captured range: UDP ${DDS_META_MCAST_PORT}-$(( DDS_USER_MCAST_PORT + 35 ))):
+    ${DDS_META_MCAST_PORT}                 UDP metatraffic multicast   (${DDS_MCAST_GROUP}:${DDS_META_MCAST_PORT})
+    ${DDS_META_UCAST_PORT}, $(( DDS_META_UCAST_PORT + 2 )), $(( DDS_META_UCAST_PORT + 4 ))...   UDP metatraffic unicast per participant (+2 per node)
+    ${DDS_USER_MCAST_PORT}                 UDP user-data multicast
+    ${DDS_USER_UCAST_PORT}, $(( DDS_USER_UCAST_PORT + 2 )), $(( DDS_USER_UCAST_PORT + 4 ))...   UDP user-data unicast per participant (+2 per node)
+  uXRCE-DDS MicroXRCEAgent (captured range: UDP 8889-8893):
+    Port = 8888 + DRONE_ID, one per drone (drones 1-5 → ports 8889-8893)
+    This host (DRONE_ID=${DRONE_ID}) uses UDP ${UXRCE_PORT}
   Zenoh router:
-    ${ZENOH_SCOUTING_PORT}   UDP scouting/discovery      (multicast ${ZENOH_MCAST_GROUP})
-    ${ZENOH_SESSION_PORT}   TCP/UDP session traffic
-    ${ZENOH_REST_PORT}   TCP REST API                (optional, --with-rest)
+    ${ZENOH_SCOUTING_PORT}        UDP scouting/discovery      (multicast ${ZENOH_MCAST_GROUP})
+    ${ZENOH_SESSION_PORT}        TCP/UDP session traffic
+    ${ZENOH_REST_PORT}        TCP REST API                (optional, --with-rest)
 
 ${BOLD}Topic architecture:${RESET}
-  PX4 -> uXRCE-DDS agent (UDP ${UXRCE_PORT}) -> ROS2 Fast-DDS:
+  PX4 -> MicroXRCEAgent (UDP ${UXRCE_PORT} for DRONE_ID=${DRONE_ID}) -> ROS2 Fast-DDS:
     /px4_${DRONE_ID}/fmu/out/vehicle_local_position_v1   (RTPS, internal only)
     /px4_${DRONE_ID}/fmu/out/vehicle_status_v1           (RTPS, internal only)
   swarm_bridge publishes to Zenoh (external-visible):
@@ -912,17 +919,18 @@ ${BOLD}Topic architecture:${RESET}
 
 ${BOLD}Wireshark display filter examples:${RESET}
   Zenoh:
-    zenoh                                           Zenoh protocol (requires dissector plugin)
-    tcp.port == ${ZENOH_SESSION_PORT} || udp.port == ${ZENOH_SESSION_PORT}        Zenoh session traffic
-    udp.port == ${ZENOH_SCOUTING_PORT}                               Zenoh scouting
-    ip.dst == ${ZENOH_MCAST_GROUP}                           Zenoh scouting multicast
-    zenoh.keyexpr contains \"swarm/drone_\"             Swarm bridge topics (needs dissector)
+    zenoh                                                  Zenoh protocol (requires dissector plugin)
+    tcp.port == ${ZENOH_SESSION_PORT} || udp.port == ${ZENOH_SESSION_PORT}               Zenoh session traffic
+    udp.port == ${ZENOH_SCOUTING_PORT}                                      Zenoh scouting
+    ip.dst == ${ZENOH_MCAST_GROUP}                                  Zenoh scouting multicast
+    zenoh.keyexpr contains \"swarm/drone_\"                  Swarm bridge topics (needs dissector)
   DDS/RTPS (Fast-DDS):
-    rtps                                            All RTPS traffic (built-in dissector)
-    ip.dst == ${DDS_MCAST_GROUP}                         Fast-DDS discovery multicast
-    udp.port == ${DDS_META_MCAST_PORT}                              DDS metatraffic discovery
-    udp.port == ${UXRCE_PORT}                                 uXRCE-DDS agent (PX4 <-> ROS2)
-    rtps && ip.src == <PX4-IP>                      PX4 RTPS traffic only
+    rtps                                                   All RTPS traffic (built-in dissector)
+    ip.dst == ${DDS_MCAST_GROUP}                                Fast-DDS discovery multicast
+    udp.port >= ${DDS_META_MCAST_PORT} && udp.port <= $(( DDS_USER_MCAST_PORT + 35 ))             All Fast-DDS RTPS ports (multicast + unicast)
+    udp.port >= 8889 && udp.port <= 8893                   uXRCE-DDS agents (all drones)
+    udp.port == ${UXRCE_PORT}                                      uXRCE-DDS agent for this drone only
+    rtps && ip.src == <PX4-IP>                             PX4 RTPS traffic only
 "
 }
 
