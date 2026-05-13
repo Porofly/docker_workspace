@@ -26,4 +26,6 @@ captures/
 *.pcap
 *.pcapng
 
+# 기타
+certs/
 CLAUDE.md
