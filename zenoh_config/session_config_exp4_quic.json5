@@ -1,0 +1,40 @@
+/// EXP4 Session Config: TCP 대신 QUIC 사용 (peer/client 측)
+///
+/// 사용법: docker-compose.yml 에 추가
+///   RMW_ZENOH_SESSION_CONFIG_URI: /root/zenoh_config/session_config_exp4_quic.json5
+///
+/// 변경점 (vs DEFAULT_RMW_ZENOH_SESSION_CONFIG):
+///   - connect.endpoints: ["tcp/localhost:7447"] → ["quic/localhost:7447"]
+///   - listen.endpoints:  ["tcp/localhost:0"]   → ["quic/localhost:0"]
+///   - transport.link.tls: 인증서 경로 (router_config_exp4_quic 와 동일)
+///
+/// 인증서는 호스트의 zenoh_config/certs/ 에 위치 → 컨테이너에서 /root/zenoh_config/certs/
+{
+  mode: "peer",
+
+  connect: {
+    endpoints: [
+      "quic/localhost:7447",
+    ],
+  },
+
+  listen: {
+    endpoints: [
+      "quic/localhost:0",
+    ],
+  },
+
+  transport: {
+    link: {
+      tls: {
+        root_ca_certificate: "/root/zenoh_config/certs/ca.pem",
+        listen_private_key: "/root/zenoh_config/certs/server.key",
+        listen_certificate: "/root/zenoh_config/certs/server.pem",
+        connect_private_key: "/root/zenoh_config/certs/server.key",
+        connect_certificate: "/root/zenoh_config/certs/server.pem",
+        enable_mtls: false,
+        verify_name_on_connect: false,
+      },
+    },
+  },
+}

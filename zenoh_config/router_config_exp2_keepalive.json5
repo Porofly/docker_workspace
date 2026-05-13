@@ -1,0 +1,78 @@
+/// EXP2: Keep-alive 빈도 감소 (lease 60s → 600s)
+///
+/// 변경점 (vs router_config.json5):
+///   - transport.link.tx.lease: 60000 → 600000 (10배)
+///   - keep_alive(=2)는 그대로 → 실효 keep-alive 주기 ~15s → ~150s
+///
+/// 의도: 무선 환경에서 idle 구간 keep-alive 패킷 빈도를 낮춰 트래픽 감소.
+///       단점: 일시적 단절 감지가 느려짐 (lease 만료까지 ~600s).
+{
+  mode: "router",
+
+  /// 드론 간 자동 발견 (같은 WiFi LAN) — baseline과 동일
+  scouting: {
+    multicast: {
+      enabled: true,
+      autoconnect: { router: ["router"], peer: ["router", "peer"], client: ["router"] },
+      listen: true,
+    },
+    gossip: {
+      enabled: true,
+      autoconnect: { router: ["router"], peer: ["router", "peer"] },
+    },
+  },
+
+  /// 토픽 격리 — baseline과 동일
+  access_control: {
+    enabled: true,
+    default_permission: "allow",
+    rules: [
+      {
+        id: "block_internal_topics_external",
+        permission: "deny",
+        flows: ["egress", "ingress"],
+        messages: [
+          "put", "delete",
+          "declare_subscriber", "declare_queryable",
+          "query", "reply",
+          "liveliness_token", "liveliness_query", "declare_liveliness_subscriber",
+        ],
+        key_exprs: [
+          "fmu/**",
+          "**/fmu/**",
+          "rosout/**",
+          "**/rosout/**",
+          "parameter_events/**",
+          "**/parameter_events/**",
+          "tf/**",
+          "**/tf/**",
+          "tf_static/**",
+          "**/tf_static/**",
+        ],
+      },
+    ],
+    subjects: [
+      {
+        id: "external_ifaces",
+        interfaces: ["wlP1p1s0", "eno1"],
+      },
+    ],
+    policies: [
+      {
+        id: "policy_external_isolation",
+        rules: ["block_internal_topics_external"],
+        subjects: ["external_ifaces"],
+      },
+    ],
+  },
+
+  /// EXP2 변경 항목
+  transport: {
+    link: {
+      tx: {
+        lease: 600000,
+        keep_alive: 2,
+      },
+    },
+  },
+}

@@ -1,0 +1,80 @@
+/// EXP5: TCP Nagle 활성화 (nodelay = false)
+///
+/// 변경점 (vs router_config.json5):
+///   - transport.link.tcp.nodelay: false (Nagle 알고리즘 활성화)
+///
+/// 의도: TCP_NODELAY 플래그를 끄면 OS 커널이 작은 패킷들을 ACK 수신 전까지
+///       묶어서(coalesce) 한 번에 전송. zenoh 자체 batching과는 별개의 OS 계층 최적화.
+///       작은 메시지 다수 환경에서 패킷 수 감소, 약간의 지연 증가.
+///
+/// 주의: DEFAULT_RMW에는 transport.link.tcp 섹션이 전체 주석 처리되어 있음.
+///       기본값은 nodelay=true (즉시 전송)이며, 여기서 false로 명시적 override.
+{
+  mode: "router",
+
+  /// 드론 간 자동 발견 — baseline과 동일
+  scouting: {
+    multicast: {
+      enabled: true,
+      autoconnect: { router: ["router"], peer: ["router", "peer"], client: ["router"] },
+      listen: true,
+    },
+    gossip: {
+      enabled: true,
+      autoconnect: { router: ["router"], peer: ["router", "peer"] },
+    },
+  },
+
+  /// 토픽 격리 — baseline과 동일
+  access_control: {
+    enabled: true,
+    default_permission: "allow",
+    rules: [
+      {
+        id: "block_internal_topics_external",
+        permission: "deny",
+        flows: ["egress", "ingress"],
+        messages: [
+          "put", "delete",
+          "declare_subscriber", "declare_queryable",
+          "query", "reply",
+          "liveliness_token", "liveliness_query", "declare_liveliness_subscriber",
+        ],
+        key_exprs: [
+          "fmu/**",
+          "**/fmu/**",
+          "rosout/**",
+          "**/rosout/**",
+          "parameter_events/**",
+          "**/parameter_events/**",
+          "tf/**",
+          "**/tf/**",
+          "tf_static/**",
+          "**/tf_static/**",
+        ],
+      },
+    ],
+    subjects: [
+      {
+        id: "external_ifaces",
+        interfaces: ["wlP1p1s0", "eno1"],
+      },
+    ],
+    policies: [
+      {
+        id: "policy_external_isolation",
+        rules: ["block_internal_topics_external"],
+        subjects: ["external_ifaces"],
+      },
+    ],
+  },
+
+  /// EXP5 변경 항목
+  transport: {
+    link: {
+      tcp: {
+        nodelay: false,
+      },
+    },
+  },
+}
